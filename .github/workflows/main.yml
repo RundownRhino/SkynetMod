@@ -1,14 +1,10 @@
-# This is a basic workflow to help you get started with Actions
-
-name: CI
+name: unminify_mod
 
 # Controls when the action will run. Triggers the workflow on push or pull request
 # events but only for the master branch
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+    branches: [master, test]
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -21,17 +17,22 @@ jobs:
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     - uses: actions/checkout@v2
-
-    # Runs a single command using the runners shell
-    - name: Run a one-line script
-      run: echo Hello, world!
-      
+      with: 
+        fetch-depth: 0
     - name: Unminify the mod
       run: sed 's+\\n+\n+g' Skynet\ mod.json > Skynet\ mod\ unminified.txt
-    - name: Simple commit
-      uses: zwaldowski/git-commit-action@v1
-    - name: GitHub Push
-      uses: ad-m/github-push-action@v0.5.0
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-
+    - name: Configure git
+      run: |
+        git config --local user.name "Github Actions"
+        git config --local user.email "actions@github.com"
+   # - name: Ensure changes are detected
+   #   run: git update-index --refresh -q --unmerged
+    - name: If there are changes, amend them to last commit and push
+      run: |
+         changesMade=false
+         git add --all
+         git diff-index --quiet HEAD -- || changesMade=true
+         $changesMade && echo "Commiting changes"
+         $changesMade && git commit --amend --no-edit
+         $changesMade && git push --force
+         true
