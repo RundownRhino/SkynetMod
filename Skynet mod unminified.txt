@@ -45,8 +45,11 @@ var RepeaterCastIntervalMilliseconds = 50;
 var enableObstacleRaytracing = false;//not implemented
 var positionTrackingTicks = 20; //how many to track, including the current one. At least 2.
 var intersectionOptimizationSteps = 5; //from aim: how many times to refine the guess for the intersection point.
+var movementLocationChangeTicks = 30; //from move: how often to update the location to move to
 //memory vars
 var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
+var lastMoveTick = -1000;
+var lastMovePosition = undefined;
 
 function aim(target, spell, caster) {
   const DEBUG_AIM = false;
@@ -555,32 +558,44 @@ function chase(state, hero, cooldowns, opponent) {
 }
 
 function move(state, hero) {
-    var centroid = { x: 0, y: 0 };
-    var numOpponents = 0;
-    for (var heroId in state.heroes) {
-        if (heroId === hero.id) {
-            continue; // Ignore self
-        }
-
-        var opponent = state.heroes[heroId];
-        centroid.x += opponent.pos.x;
-        centroid.y += opponent.pos.y;
-
-        ++numOpponents;
+    let curTick = state.tick;
+    let target;
+    if(curTick < lastMoveTick + movementLocationChangeTicks){
+      target = lastMovePosition;
     }
-    centroid.x /= numOpponents;
-    centroid.y /= numOpponents;
-
-    if (!numOpponents) {
-        return;
+    else{
+      var centroid = { x: 0, y: 0 };
+      var numOpponents = 0;
+      for (var heroId in state.heroes) {
+          if (heroId === hero.id) {
+              continue; // Ignore self
+          }
+  
+          var opponent = state.heroes[heroId];
+          centroid.x += opponent.pos.x;
+          centroid.y += opponent.pos.y;
+  
+          ++numOpponents;
+      }
+      centroid.x /= numOpponents;
+      centroid.y /= numOpponents;
+  
+      if (!numOpponents) {
+          return;
+      }
+  
+      var offset = vectorNegate(vectorDiff(centroid, center)); // Move to the opposite side of the arena
+      var targetDistance = state.radius * 0.33; // Closer to center than edge (for polygonal maps)
+      
+      //randomness! -SH
+      offset = vectorFromAngle(vectorAngle(offset)+2*(Math.random()-0.5)*30*(2*Math.PI/360));
+      targetDistance *= (0.8+0.4*Math.random());
+      target = vectorPlus(center, vectorRelengthen(offset, targetDistance));
+      lastMovePosition = target;
+      lastMoveTick = curTick;
     }
-
-    var offset = vectorNegate(vectorDiff(centroid, center)); // Move to the opposite side of the arena
-    var targetDistance = state.radius * 0.33; // Closer to center than edge (for polygonal maps)
-    var target = vectorPlus(center, vectorRelengthen(offset, targetDistance));
-
     var distanceToTarget = vectorDistance(hero.pos, target);
-    if (distanceToTarget <= CloseEnoughDistance) {
+    if (distanceToTarget <= 0.01) {
         // Close enough - don't send any action so the game can sleep while waiting for players
         return null;
     }
