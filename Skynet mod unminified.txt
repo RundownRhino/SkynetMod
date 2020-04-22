@@ -74,7 +74,7 @@ function aim(target, spell, caster) {
   var curPos = target.pos;
   var tracker = trackedPositions[target.id];
   !DEBUG_AIM || console.log(tracker);
-  if(tracker === undefined){
+  if(tracker === undefined||tracker.length <= 1){
     return curPos;//TODO: better handling cases when the target has no tracked poses for some reason.
   }
   /*//most naive way: velocity = (<newest pos>-<oldest pos>)/(positionTrackingTicks-1)
@@ -217,6 +217,14 @@ function updateTracking(worldstate){
     if(trackedPositions[hero.id]===undefined){
       //haven't been tracked before
       trackedPositions[hero.id]=[];
+    }
+    if(trackedPositions[hero.id].length>0){
+      //teleport detection
+      const MAX_MOVE_PER_TICK = 0.04//normal movement speed is 0.12 per second = 0.002 per tick, that's 20 times that
+      if(vectorLength(vectorDiff(hero.pos,trackedPositions[hero.id][trackedPositions[hero.id].length-1]))>MAX_MOVE_PER_TICK){
+        trackedPositions[hero.id]=[];//drop past tracking for this hero
+        console.log(\"Hero(id:\"+hero.id+\") moved too fast, discarding tracked positions.\")
+      }
     }
     trackedPositions[hero.id].push(hero.pos); //add new position to the end
     while(trackedPositions[hero.id].length > positionTrackingTicks){
