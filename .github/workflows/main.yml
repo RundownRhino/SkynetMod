@@ -27,4 +27,4 @@ jobs:
       run: echo Hello, world!
       
     - name: Unminify the mod
-      run: sed 's+\\n+\n+g' Skynet\ mod.json > Skynet mod\ unminified.txt
+      run: sed 's+\\n+\n+g' Skynet\ mod.json > Skynet\ mod\ unminified.txt
