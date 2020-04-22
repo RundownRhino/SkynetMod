@@ -27,10 +27,14 @@ jobs:
       
     - name: Unminify the mod
       run: sed 's+\\n+\n+g' Skynet\ mod.json > Skynet\ mod\ unminified.txt
-    - name: If there are changes, amend them to last commit
+    - name: Configure git
       run: |
         git config --local user.name "Github Actions"
         git config --local user.email "actions@github.com"
-        git update-index --refresh
-        git diff-index --quiet HEAD -- || (git commit --amend --no-edit && git push --force)
-
+    - name: Ensure changes are detected
+      run: git update-index --refresh
+    - name: If there are changes, amend them to last commit
+      run: git diff-index --quiet HEAD -- || (git commit --amend --no-edit && changesMade=true)
+    - name: Push
+      run: git push
+      if: changesMade
