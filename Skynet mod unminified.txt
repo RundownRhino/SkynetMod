@@ -14,6 +14,105 @@
 	"World": {
 		"BotName": "MurderBot"
 	},
+	"Choices": {
+		"Keys": [
+			{
+				"btn": "a",
+				"barSize": 0.75,
+				"wheelSize": 0.5
+			},
+			{
+				"btn": "p",
+				"barSize": 0.1,
+				"wheelSize": 0.1
+			},
+			{
+				"btn": "q",
+				"barSize": 1,
+				"wheelSize": 1
+			},
+			{
+				"btn": "w",
+				"barSize": 1,
+				"wheelSize": 0.75
+			},
+			{
+				"btn": "e",
+				"barSize": 1,
+				"wheelSize": 0.75
+			},
+			{
+				"btn": "r",
+				"barSize": 1,
+				"wheelSize": 0.75
+			},
+			null,
+			{
+				"btn": "f",
+				"barSize": 0.75,
+				"wheelSize": 0.5
+			}
+		],
+		"Options": {
+			"p": [
+				[
+					"point"
+				]
+			]
+		}
+	},
+	"Spells": {
+		"point": {
+			"id": "point",
+			"name": "Point",
+			"description": "For testing. Mark a point in space. No effect. Flies like a very fast horcrux.",
+			"action": "projectile",
+			"sound": "horcrux",
+			"color": "#22ee88",
+			"icon": "cometSpark",
+			"maxAngleDiffInRevs": 0.01,
+			"cooldown": 1,
+			"throttle": true,
+			"projectile": {
+				"density": 0.000001,
+				"restitution": 0,
+				"radius": 0.0035,
+				"speed": 1,
+				"maxTicks": 30,
+				"minTicks": 1,
+				"damage": 0,
+				"lifeSteal": 0,
+				"collideWith": 29,
+				"expireOn": 5,
+				"destructible": {},
+				"conveyable": false,
+				"bumpable": false,
+				"shieldTakesOwnership": false,
+				"projectileBuffs": [],
+				"renderers": [
+					{
+						"type": "projectile",
+						"ticks": 10,
+						"noPartialRadius": true
+					}
+				],
+				"behaviours": [
+					{
+						"type": "homing",
+						"targetType": "cursor",
+						"trigger": {
+							"afterTicks": 60,
+							"atCursor": true
+						},
+						"newSpeed": 0,
+						"redirect": true
+					}
+				],
+				"sound": "horcrux",
+				"color": "#22ee88"
+			}
+		}
+	},
 	"Code": "var center = { x: 0.5, y: 0.5 };
 
 var CloseEnoughDistance = 0.05;
@@ -46,6 +145,7 @@ var enableObstacleRaytracing = false;//not implemented
 var positionTrackingTicks = 20; //how many to track, including the current one. At least 2.
 var intersectionOptimizationSteps = 5; //from aim: how many times to refine the guess for the intersection point.
 var movementLocationChangeTicks = 30; //from move: how often to update the location to move to
+const PREDICT_TESTING = false; //if true, BOTS WILL NOT FIGHT and only show their targeting
 //memory vars
 var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
 var lastMoveTick = -1000;
@@ -307,6 +407,7 @@ function act(input) {
         // Give the bot a reaction time otherwise it is OP
         var reactionMilliseconds = ReactionMillisecondsLookup[action.spellId] || defaultReactionMilliseconds(difficulty);
         action.delayMilliseconds = reactionMilliseconds;
+        //console.log(action);  
         return action;
     } else {
         return null;
@@ -325,7 +426,7 @@ function chooseSpells(settings) {
     alreadyChosenSpells = true;
 
     var spells = randomSpells(settings);
-
+  
     // Want to test a particular spell? Uncomment and edit the lines below
     /*spells[\"q\"] = \"fireball\";
     spells[\"w\"] = \"lightning\";
@@ -336,6 +437,7 @@ function chooseSpells(settings) {
     spells[\"e\"] = \"phaseOut\";
     spells[\"r\"] = \"repeater\";
 
+    spells[\"p\"] = \"point\";//used to point at targets
     return { spells };
 }
 
@@ -450,6 +552,9 @@ function castSpell(state, hero, opponent, cooldowns, settings) {
 
     var candidates = [];
     for (var spellId in cooldowns) {
+        if(spellId==\"point\"){
+          continue;//not allowed to use it normally
+        }
         var readyToCast = !cooldowns[spellId];
         var spell = settings.Spells[spellId];
 
@@ -466,6 +571,9 @@ function castSpell(state, hero, opponent, cooldowns, settings) {
         var action = { spellId, target: aim(opponent, settings.Spells[spellId], hero) };
         if (action.spellId === spellId) {
             updateNextSpellTime(spellId);
+        }
+        if(PREDICT_TESTING){
+          action.spellId = \"point\";
         }
         return action;
     } else {
