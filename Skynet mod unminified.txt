@@ -14,7 +14,7 @@
 	"World": {
 		"BotName": "MurderBot"
 	},
-	"Code": "var center = { x: 0.5, y: 0.5 };
+	"Code": "var center = { x: 0.5, y: 1 };
 
 var CloseEnoughDistance = 0.05;
 var CloseEnoughRadians = 0.03 * Math.PI;
@@ -27,7 +27,7 @@ var SpellCastJitterMilliseconds = 300;
 var TicksPerSecond = 60;
 
 var HardReactionMilliseconds = 1;
-var EasyReactionMilliseconds = 1;
+var EasyReactionMilliseconds = 2;
 var ReactionMillisecondsLookup = { // Change the reaction time on certain spells
     retarget: 1,
 };
