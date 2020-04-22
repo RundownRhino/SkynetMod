@@ -117,11 +117,13 @@ function ODLR(X,Y){
   //outputs parameters of approximation `ax+b` of points in the input
   //X,Y - arrays of numbers, same length
   let n = X.length;
-  let XSum = myArraySum(X);
-  let YSum = myArraySum(Y);
-  let XYSum = myArraySum(myArrayMultiply(X,Y));
-  let XXSum = myArraySum(myArrayMultiply(X,X));
-  let YYSum = myArraySum(myArrayMultiply(Y,Y));
+  let XY = myArrayMultiply(X,Y);
+  let XX = myArrayMultiply(X,X);
+  let YY = myArrayMultiply(Y,Y);
+  let XSum=0,YSum=0,XXSum=0,XYSum=0,YYSum=0;
+  for(let i=0;i<n;i++){
+    XSum+=X[i];YSum+=Y[i];XXSum+=XX[i];XYSum+=XY[i];YYSum+=YY[i];
+  }
   let a = (n*XYSum-XSum*YSum)/(n*XXSum-XSum*XSum);
   let b = (XSum*XYSum-XXSum*YSum)/(XSum*XSum-n*XXSum);
   return {a:a,b:b};//I sure hope I didn't make a mistake here, lol
