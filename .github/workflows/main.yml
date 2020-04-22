@@ -33,10 +33,9 @@ jobs:
         git config --local user.email "actions@github.com"
     - name: Ensure changes are detected
       run: git update-index --refresh
-    - name: If there are changes, amend them to last commit
+    - name: If there are changes, amend them to last commit and push
       run: |
          changesMade=false
-         git diff-index --quiet HEAD -- || (git commit --amend --no-edit && changesMade=true)
-    - name: Push
-      run: git push
-      if: changesMade
+         git diff-index --quiet HEAD -- || changesMade=true
+         changesMade && git commit --amend --no-edit
+         changesMade && git push
