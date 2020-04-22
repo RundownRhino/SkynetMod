@@ -27,10 +27,11 @@ jobs:
       
     - name: Unminify the mod
       run: sed 's+\\n+\n+g' Skynet\ mod.json > Skynet\ mod\ unminified.txt
-    - name: Configure git
+    - name: Configure git and pull
       run: |
         git config --local user.name "Github Actions"
         git config --local user.email "actions@github.com"
+        git pull
    # - name: Ensure changes are detected
    #   run: git update-index --refresh -q --unmerged
     - name: If there are changes, amend them to last commit and push
