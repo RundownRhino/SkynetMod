@@ -25,11 +25,6 @@ jobs:
     # Runs a single command using the runners shell
     - name: Run a one-line script
       run: echo Hello, world!
-
-    # Runs a set of commands using the runners shell
-    - name: Run a multi-line script
-      run: |
-        echo Add other actions to build,
-        echo test, and deploy your project.
+      
     - name: Unminify the mod
-      run: sed 's+\\n+\n+g' "Skynet mod.json" > "Skynet mod unminified.txt"
+      run: sed 's+\\n+\n+g' Skynet\ mod.json > Skynet mod\ unminified.txt
