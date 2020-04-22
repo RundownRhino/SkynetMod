@@ -28,6 +28,8 @@ jobs:
       
     - name: Unminify the mod
       run: sed 's+\\n+\n+g' Skynet\ mod.json > Skynet\ mod\ unminified.txt
+    - name: Simple commit
+      uses: zwaldowski/git-commit-action@v1
     - name: GitHub Push
       uses: ad-m/github-push-action@v0.5.0
       with:
