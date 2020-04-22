@@ -342,18 +342,18 @@ function findOpponent(heroes, myHeroId) {
     }
 
     var choice = null;
-    var mostHealth = 0;
+    var closestDist = 1000;
     for (var heroId in heroes) {
         var hero = heroes[heroId];
 
         if (!hero.isEnemy) { continue; }
 
         // Uncomment the line below to only target humans
-        // if (hero.isBot) { continue; }
-
-        if (hero.health > mostHealth) {
-            // Target the enemy with the most health
-            mostHealth = hero.health;
+        if (hero.isBot) { continue; }
+        let dist = vectorDistance(hero.pos,myHero.pos);
+        if (dist < closestDist) {
+            // Target the closest enemy instead - SH
+            closestDist = dist;
             choice = hero;
         }
     }
