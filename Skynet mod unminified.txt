@@ -44,6 +44,7 @@ var enableTargetLeading = true;
 var RepeaterCastIntervalMilliseconds = 50;
 var enableObstacleRaytracing = false;//not implemented
 var positionTrackingTicks = 20; //how many to track, including the current one. At least 2.
+var intersectionOptimizationSteps = 5; //from aim: how many times to refine the guess for the intersection point.
 //memory vars
 var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
 
@@ -83,9 +84,17 @@ function aim(target, spell, caster) {
   var estimatedVelocity = linearApproximation(tracker);
   //console.log(\"estimatedVelocity:\"+myVectorToString(estimatedVelocity));
   var range = vectorDistance(caster.pos, curPos);
-  var time1 = range/spell.projectile.speed; // same naive guess as in old code, in seconds
+  var time1 = range/spell.projectile.speed; // first naive guess, in seconds
   var deltaX = vectorMultiply(estimatedVelocity,time1*TicksPerSecond);//converting from per tick to per second
   var aimPos = vectorPlus(curPos, deltaX);
+  for(let i=1;i<intersectionOptimizationSteps;i++){
+    //intersection refinement
+    //console.log(\"i=\"+i+\";time1=\"+time1);
+    var range = vectorDistance(caster.pos, aimPos);//to the aiming position this time
+    var time1 = range/spell.projectile.speed; // refined guess of the time
+    var deltaX = vectorMultiply(estimatedVelocity,time1*TicksPerSecond);//converting from per tick to per second
+    var aimPos = vectorPlus(curPos, deltaX);
+  }
   !DEBUG_AIM || console.log(\"spellSpeed:\"+spell.projectile.speed+\";estimatedVelocity:\"+myVectorToString(estimatedVelocity));
   return aimPos;
 }
