@@ -1,0 +1,690 @@
+{
+	"Mod": {
+		"name": "Skynet mod",
+		"author": "SlitheringHorror",
+		"description": "Mon, 20 Apr 2020 15:33:49 GMT",
+		"titleLeft": "Skynet ",
+		"titleRight": "Mod!",
+		"subtitleLeft": "Boosts bots' reaction times to be nigh-instanteneous",
+		"subtitleRight": "and makes them lead targets"
+	},
+	"Matchmaking": {
+		"MaxBots": 1
+	},
+	"World": {
+		"BotName": "MurderBot"
+	},
+	"Code": "var center = { x: 0.5, y: 0.5 };
+
+var CloseEnoughDistance = 0.05;
+var CloseEnoughRadians = 0.03 * Math.PI;
+var MissRadius = 0;
+var DodgeRadius = 0.15;
+var SpellCastIntervalMilliseconds = 500;
+var SpellCastJitterMilliseconds = 300;
+
+
+var TicksPerSecond = 60;
+
+var HardReactionMilliseconds = 1;
+var EasyReactionMilliseconds = 1;
+var ReactionMillisecondsLookup = { // Change the reaction time on certain spells
+    retarget: 1,
+};
+
+var alreadyChosenSpells = false;
+var nextSpell = 0;
+
+// See ai.contracts.ts:
+// input is InputContract - contains information about the current state of the world
+// output is OutputContract - an action you want to take in response to the world 
+
+//parameters for the bot
+var enableTargetLeading = true;
+var RepeaterCastIntervalMilliseconds = 50;
+var enableObstacleRaytracing = false;//not implemented
+var positionTrackingTicks = 20; //how many to track, including the current one. At least 2.
+//memory vars
+var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
+
+function aim(target, spell, caster) {
+  const DEBUG_AIM = false;
+  // Gets target, spell, and caster, outputs the position for caster to aim at to hit the target with the spell.
+  if(!enableTargetLeading){
+    return target.pos;
+  }
+  /*old tracking code
+  const HEROSPEED = 0.12 //not sure I can get it directly
+  
+  var curPos = target.pos; //vector
+  var targetForcedVelocity = target.velocity; //vector - this is only enforced velocity from knockback
+  var targetMoveVelocity = vectorMultiply(vectorFromAngle(target.heading),HEROSPEED);
+  var targetVelocity = vectorPlus(targetForcedVelocity,targetMoveVelocity);
+  var range = vectorDistance(caster.pos, curPos);
+  var time1 = range/spell.projectile.speed; // naive guess at a time-to-hit, in seconds
+  var deltaX = vectorMultiply(targetVelocity,time1); //leading distance
+  */
+  
+  //new code: prediction based on old positions
+  //the current position should already be in trackedPositions
+  var curPos = target.pos;
+  var tracker = trackedPositions[target.id];
+  !DEBUG_AIM || console.log(tracker);
+  if(tracker === undefined){
+    return curPos;//TODO: better handling cases when the target has no tracked poses for some reason.
+  }
+  /*//most naive way: velocity = (<newest pos>-<oldest pos>)/(positionTrackingTicks-1)
+  var estimatedVelocity = vectorMultiply(vectorDiff(tracker[tracker.length-1],tracker[0]),1/(positionTrackingTicks-1));//this is speed per tick*/
+  //less naive way: linear approximation
+  var estimatedVelocity = linearApproximation(tracker);
+  //console.log(\"estimatedVelocity:\"+myVectorToString(estimatedVelocity));
+  var range = vectorDistance(caster.pos, curPos);
+  var time1 = range/spell.projectile.speed; // same naive guess as in old code, in seconds
+  var deltaX = vectorMultiply(estimatedVelocity,time1*TicksPerSecond);//converting from per tick to per second
+  var aimPos = vectorPlus(curPos, deltaX);
+  !DEBUG_AIM || console.log(\"spellSpeed:\"+spell.projectile.speed+\";estimatedVelocity:\"+myVectorToString(estimatedVelocity));
+  return aimPos;
+}
+function linearApproximation(posArray){
+  //gets an array of vectors, assumed to be all with a separation of 1 tick, outputs incline of least-squares approximation
+  let valNum = posArray.length;
+  let X = [];
+  let Y = [];
+  for(let i=0;i<valNum;i++){
+    X.push(posArray[i].x);
+    Y.push(posArray[i].y);
+  }
+  let T = myRange(0,valNum);
+  let aX = ODLR(T,X).a;
+  let aY = ODLR(T,Y).a;
+  return {x:aX,y:aY};//b we don't care about
+}
+function ODLR(X,Y){
+  //one-dimensional linear regression
+  //outputs parameters of approximation `ax+b` of points in the input
+  //X,Y - arrays of numbers, same length
+  let n = X.length;
+  let XSum = myArraySum(X);
+  let YSum = myArraySum(Y);
+  let XYSum = myArraySum(myArrayMultiply(X,Y));
+  let XXSum = myArraySum(myArrayMultiply(X,X));
+  let YYSum = myArraySum(myArrayMultiply(Y,Y));
+  let a = (n*XYSum-XSum*YSum)/(n*XXSum-XSum*XSum);
+  let b = (XSum*XYSum-XXSum*YSum)/(XSum*XSum-n*XXSum);
+  return {a:a,b:b};//I sure hope I didn't make a mistake here, lol
+}
+function myRange(a,b){
+  //like in python - array from a inclusive to b exclusive
+  let res = [];
+  for(let i = a; i < b; i++){
+    res.push(i);
+  }
+  return res;
+}
+function myArrayMultiply(a,b){
+  //array elementwise multiplication
+  //can work on 2-vec
+  if(a.length!=b.length||typeof a != typeof b){
+    console.log(\"Trying to multiply arrays of different sizes/types\");
+    return undefined;//TODO: error out in a better way.
+  }
+  let res = [];
+  if(a.length>0 && a[0].x!==undefined){
+  //assume vector arrays
+  for(let i = 0; i<a.length;i++){
+      res.push({x:a[i].x*b[i].x,y:a[i].y*b[i].y});
+    }
+  }
+  else{
+    for(let i = 0; i<a.length;i++){
+      res.push(a[i]*b[i]);
+    }
+  }
+  return res;
+}
+function myArraySum(a){
+  if(a.length==0){return 0;}
+  //sums arrays, including vector ones
+  if(a[0].x!==undefined){
+    //assuming vector array
+    let sumX=0;
+    let sumY=0;
+    for(let i=0;i<a.length;i++){
+      sumX+=a[i].x;
+      sumY+=a[i].y;
+    }
+    return {x:sumX,y:sumY};
+  }
+  else{
+    let sum=0
+    for(let i=0;i<a.length;i++){
+      sum+=a[i];
+    }
+    return sum;
+  }
+}
+function myVectorToString(vector){
+  return \"(x:\"+vector.x+\";y:\"+vector.y+\")\"
+}
+function doesLineIntersectObstacles(pos1, pos2, obstacles, lookup){
+  //lookup is ObstacleTemplateLookup
+  for (obstacle in obstacles) {
+    var C = obstacle.pos;
+    var closest = findClosestDistanceToPoint(pos, pos2, C);
+    var obstacleTemplate = lookup[obstacle.type];
+    //if(closest<) 
+    //oh, I can't get an obstacle's radius...
+    return false;
+  }
+}
+
+function findClosestDistanceToPoint(pos1, pos2, otherPos){
+  //return closest distance to otherPos among points on the line segment from pos1 to pos2.
+  var AB = vectorDiff(pos2, pos1);
+  var AC = vectorDiff(otherPos, pos1);
+  var BC = vectorDiff(otherPos, pos2);
+  var AB_BC = vectorDot(AB,BC);
+  var AB_AC = vectorDot(AB,AC);
+  var result = 0;
+  if (AB_BC > 0){
+    //then it's BC
+    result = vectorLength(BC);
+  }
+  else if (AB_AC < 0) { 
+    //then it's AC
+    result = vectorLength(AC);
+  }
+  else {
+    var div = vectorLength(AB);
+    result = ((AB.x*AC.y) - (AB.y*AC.x))/div;
+    if(result < 0){
+      result *= -1;
+    }
+  }
+  return result;
+}
+function updateTracking(worldstate){
+  const DEBUG_TRACKING = false;
+  !DEBUG_TRACKING || console.log(\"Updating tracking!\");
+  //called from act() every tick, updates tracking
+  for (herokey in worldstate.heroes){//iterates over keys
+    var hero = worldstate.heroes[herokey];
+    !DEBUG_TRACKING || console.log(\"Tracking hero of id:\"+hero.id);
+    if(trackedPositions[hero.id]===undefined){
+      //haven't been tracked before
+      trackedPositions[hero.id]=[];
+    }
+    trackedPositions[hero.id].push(hero.pos); //add new position to the end
+    while(trackedPositions[hero.id].length > positionTrackingTicks){
+      trackedPositions[hero.id].shift(); //remove first element(oldest pos)
+    }
+  }
+}
+function evadeOverload(worldstate, hero, cooldowns, settings){
+  const DEBUG_EVADE_OVERLOAD = false;
+  let overloadRange = settings.Spells['scourge'].detonate.radius;
+  !DEBUG_EVADE_OVERLOAD || console.log(\"overload range:\"+overloadRange);
+  // Check if there are players looking to overload you
+  for (key in worldstate.heroes){
+    let enemy = worldstate.heroes[key];
+    if(enemy.id == hero.id||vectorDistance(enemy.pos,hero.pos)<(overloadRange+hero.radius)){
+      continue;//ourselves or too far
+    }
+    if(enemy.casting && enemy.casting.spellId == \"scourge\"){
+      //uh-oh, need to evade right now
+      var evadeDirection = vectorUnit(vectorDiff(hero.pos, enemy.pos));
+      var step = vectorMultiply(evadeDirection, 2*overloadRange);//the range shouldn't matter much, to be honest
+      var target = vectorPlus(hero.pos, step);
+      return { spellId: \"move\", target }; 
+    }
+  }
+  return null;
+}
+
+function act(input) {
+    // Want the bot to do nothing? Uncomment the line below (remove the //):
+    // return null;
+
+    var state = input.state;
+    var heroId = input.heroId;
+    var hero = state.heroes[heroId];
+    var cooldowns = input.cooldowns;
+    var settings = input.settings;
+    var difficulty = input.difficulty;
+    
+    var opponent = findOpponent(state.heroes, heroId);
+    if (!(hero && opponent)) {
+        // Either we're dead, or everyone else is, nothing to do
+        return null;
+    }
+    updateTracking(state);
+    var action = null;
+    if (state.started) {
+        action =
+            evadeOverload(state, hero, cooldowns, settings)
+            ||recovery(state, hero, cooldowns)
+            || dodge(state, hero, cooldowns)
+            || castSpell(state, hero, opponent, cooldowns, settings)
+            || focus(hero, opponent)
+            || chase(state, hero, cooldowns, opponent)
+            || move(state, hero)
+            || face(state, hero, opponent)
+    } else {
+        action =
+            chooseSpells(settings)
+            || dodge(state, hero, cooldowns)
+            || move(state, hero)
+            || face(state, hero, opponent)
+    }
+
+    if (action) {
+        // Give the bot a reaction time otherwise it is OP
+        var reactionMilliseconds = ReactionMillisecondsLookup[action.spellId] || defaultReactionMilliseconds(difficulty);
+        action.delayMilliseconds = reactionMilliseconds;
+        return action;
+    } else {
+        return null;
+    }
+}
+
+function defaultReactionMilliseconds(difficulty) {
+    var alpha = Math.sqrt(difficulty);
+    return alpha * HardReactionMilliseconds + (1 - alpha) * EasyReactionMilliseconds;
+}
+
+function chooseSpells(settings) {
+    if (alreadyChosenSpells) {
+        return null;
+    }
+    alreadyChosenSpells = true;
+
+    var spells = randomSpells(settings);
+
+    // Want to test a particular spell? Uncomment and edit the lines below
+    /*spells[\"q\"] = \"fireball\";
+    spells[\"w\"] = \"lightning\";
+    spells[\"e\"] = \"forcefield\";
+    spells[\"r\"] = \"repeater\";*/
+    spells[\"q\"] = \"fireball\";
+    spells[\"w\"] = \"boost\";
+    spells[\"e\"] = \"phaseOut\";
+    spells[\"r\"] = \"repeater\";
+
+    return { spells };
+}
+
+function randomSpells(settings) {
+\tvar keyBindings = {};
+\tvar allOptions = settings.Choices.Options;
+\tfor (var btn in allOptions) { // One of the buttons, e.g. Q or R
+        var options = allOptions[btn];
+
+        var spellIds = [];
+        for (var i = 0; i < options.length; ++i) {
+            var row = options[i];
+            for (var j = 0; j < row.length; ++j) {
+                var spellId = row[j];
+                spellIds.push(spellId);
+            }
+        }
+
+\t\tif (spellIds.length > 1) {
+\t\t\tkeyBindings[btn] = spellIds[Math.floor(Math.random() * spellIds.length)];
+\t\t}
+\t}
+\treturn keyBindings;
+}
+
+function findOpponent(heroes, myHeroId) {
+    var myHero = heroes[myHeroId];
+    if (!myHero) {
+        return null;
+    }
+
+    var choice = null;
+    var mostHealth = 0;
+    for (var heroId in heroes) {
+        var hero = heroes[heroId];
+
+        if (!hero.isEnemy) { continue; }
+
+        // Uncomment the line below to only target humans
+        // if (hero.isBot) { continue; }
+
+        if (hero.health > mostHealth) {
+            // Target the enemy with the most health
+            mostHealth = hero.health;
+            choice = hero;
+        }
+    }
+    return choice;
+}
+
+function recovery(state, hero, cooldowns) {
+    if (hero.inside || state.radius <= 0) {
+        // No need to recover
+        return null;
+    }
+
+    var spellId = null;
+    if (cooldowns[\"teleport\"] === 0) {
+        spellId = \"teleport\";
+    } else if (cooldowns[\"thrust\"] === 0) {
+        spellId = \"thrust\";
+    } else if (cooldowns[\"swap\"] === 0) {
+        spellId = \"swap\";
+    } else if (cooldowns[\"voidRush\"] === 0) {
+        spellId = \"voidRush\";
+    } else if (cooldowns[\"vanish\"] === 0) {
+        spellId = \"vanish\";
+    } else {
+        spellId = \"move\";
+    }
+
+    if (spellId) {
+        return { spellId, target: center };
+    }
+    return null;
+}
+
+function deflect(state, hero, cooldowns, projectile) {
+    var target = vectorMidpoint(hero.pos, projectile.pos);
+    var spellId = null;
+    if (cooldowns[\"shield\"] === 0) {
+        spellId = \"shield\";
+    } else if (cooldowns[\"icewall\"] === 0) {
+        spellId = \"icewall\";
+    } else if (cooldowns[\"saber\"] === 0) {
+        spellId = \"saber\";
+    } else if (cooldowns[\"dualSaber\"] === 0) {
+        spellId = \"dualSaber\";
+    } else if (cooldowns[\"meteor\"] === 0) {
+        spellId = \"meteor\";
+    } else if (cooldowns[\"meteorite\"] === 0) {
+        spellId = \"meteorite\";
+    } else if (cooldowns[\"whirlwind\"] === 0) {
+        spellId = \"whirlwind\";
+    } else if (cooldowns[\"phaseOut\"] === 0) {
+        spellId = \"phaseOut\";
+    } else {
+        spellId = null;
+    }
+
+    if (spellId) {
+        return { spellId, target };
+    } else {
+        return null;
+    }
+}
+
+function castSpell(state, hero, opponent, cooldowns, settings) {
+    if (!readyForNextSpell(hero)) {
+        return null;
+    }
+
+    var candidates = [];
+    for (var spellId in cooldowns) {
+        var readyToCast = !cooldowns[spellId];
+        var spell = settings.Spells[spellId];
+
+        if (spell
+            && readyToCast
+            && validAttack(state, hero, opponent, spell)) {
+
+            candidates.push(spellId);
+        }
+    }
+
+    if (candidates.length > 0) {
+        var spellId = candidates[Math.floor(Math.random() * candidates.length)];
+        var action = { spellId, target: aim(opponent, settings.Spells[spellId], hero) };
+        if (action.spellId === spellId) {
+            updateNextSpellTime(spellId);
+        }
+        return action;
+    } else {
+        return null;
+    }
+}
+
+function validAttack(state, hero, opponent, spell) {
+    var opponentShielded = !!opponent.shieldTicksRemaining;
+
+    var distance = vectorDistance(hero.pos, opponent.pos);
+    if (spell.action === \"projectile\" || spell.action === \"spray\" || spell.action === \"retractor\" || spell.action === \"focus\" || spell.action === \"charge\") {
+        if (spell.id === \"swap\") { // Swap doesn't work as an attack
+            return false;
+        }
+        if (opponentShielded && !spell.projectile.detonate) { // Detonate spells can penetrate shields, nothing else can
+            return false;
+        }
+        if (spell.id === \"whip\") {
+            // Just keep casting Electroshock even if out of range
+            return true;
+        }
+
+        var range = spell.projectile.speed * spell.projectile.maxTicks / TicksPerSecond + opponent.radius;
+        return distance <= range;
+    } else if (spell.action === \"scourge\") {
+        var range = spell.radius + opponent.radius;
+        return distance <= range;
+    } else if (spell.id === \"blaze\") {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+function readyForNextSpell(hero) {
+    return (
+        Date.now() >= nextSpell // Don't cast too fast
+        || !!hero.link // If linked to something, cast as many spells as possible
+    );
+}
+
+function updateNextSpellTime(spellId) {
+    if(spellId == \"repeater\"){
+      //console.log(\"repeater usage detected\")
+      nextSpell = Date.now() + RepeaterCastIntervalMilliseconds;
+      return;
+    }
+    nextSpell = Date.now() + SpellCastIntervalMilliseconds + Math.floor((Math.random() < 0.5 ? -1 : 1) * Math.random() * SpellCastJitterMilliseconds);
+}
+
+function jitter(target, missRadius) {
+    var radius = Math.random() * missRadius;
+    var angle = Math.random() * 2 * Math.PI;
+    return {
+        x: target.x + radius * Math.cos(angle),
+        y: target.y + radius * Math.sin(angle),
+    };
+}
+
+function focus(hero, opponent) { // When using a spell (e.g. Acolyte Beam, Spirit Missile) - ensure we are focusing the enemy, otherwise we will miss
+    if (hero.casting) {
+        if (hero.casting.spellId === \"blast\" || hero.casting.spellId === \"retractor\" || hero.casting.spellId === \"rocket\") {
+            // Have to release or it won't fire
+            return { spellId: hero.casting.spellId, release: true, target: opponent.pos };
+        } else if (hero.casting.spellId === \"saber\" || hero.casting.spellId === \"dualSaber\") {
+            // Don't focus the lightsaber, just swish it around
+            return { spellId: \"retarget\", target: vectorPlus(hero.pos, vectorFromAngle(hero.heading + Math.PI / 2)) };
+        } else if (hero.casting.spellId === \"grapple\") {
+            // Throw away to the right (TODO: be smarter about this)
+            return { spellId: hero.casting.spellId, release: true, target: vectorPlus(hero.pos, vectorFromAngle(hero.heading + Math.PI / 2)) };
+        } else if (hero.casting.spellId === \"halo\") {
+            return { spellId: \"move\", target: opponent.pos };
+        } else {
+            return { spellId: \"retarget\", target: opponent.pos };
+        }
+    } else {
+        return null;
+    }
+}
+
+function chase(state, hero, cooldowns, opponent) {
+    if (\"whip\" in cooldowns) {
+        // Got to get within range when using Electroshock
+        var target = vectorMidpoint(hero.pos, opponent.pos);
+        return { spellId: \"move\", target };
+    } else {
+        return null;
+    }
+}
+
+function move(state, hero) {
+    var centroid = { x: 0, y: 0 };
+    var numOpponents = 0;
+    for (var heroId in state.heroes) {
+        if (heroId === hero.id) {
+            continue; // Ignore self
+        }
+
+        var opponent = state.heroes[heroId];
+        centroid.x += opponent.pos.x;
+        centroid.y += opponent.pos.y;
+
+        ++numOpponents;
+    }
+    centroid.x /= numOpponents;
+    centroid.y /= numOpponents;
+
+    if (!numOpponents) {
+        return;
+    }
+
+    var offset = vectorNegate(vectorDiff(centroid, center)); // Move to the opposite side of the arena
+    var targetDistance = state.radius * 0.33; // Closer to center than edge (for polygonal maps)
+    var target = vectorPlus(center, vectorRelengthen(offset, targetDistance));
+
+    var distanceToTarget = vectorDistance(hero.pos, target);
+    if (distanceToTarget <= CloseEnoughDistance) {
+        // Close enough - don't send any action so the game can sleep while waiting for players
+        return null;
+    }
+
+    return { spellId: \"move\", target };
+}
+
+function face(state, hero, opponent) {
+    var target = opponent.pos;
+    var targetAngle = vectorAngle(vectorDiff(opponent.pos, hero.pos));
+    var angleDelta = vectorAngleDelta(hero.heading, targetAngle);
+    if (Math.abs(angleDelta) <= CloseEnoughRadians) {
+        return null;
+    }
+
+    return { spellId: \"retarget\", target };
+}
+
+function dodge(state, hero, cooldowns) {
+    for (var projectileId in state.projectiles) {
+        var projectile = state.projectiles[projectileId];
+        if (projectile.ownerId === hero.id) {
+            // This is my own projectile
+            continue;
+        }
+
+        if (projectile.spellId === \"halo\") {
+            // Halo is never coming for us, it orbits around its owner
+            continue;
+        }
+
+        var diff = vectorDiff(hero.pos, projectile.pos);
+        var distancePerTimeStep = vectorDot(projectile.velocity, vectorUnit(diff));
+        if (distancePerTimeStep <= 0) {
+            // Not coming towards us
+            continue;
+        }
+
+        var timeToCollision = vectorLength(diff) / distancePerTimeStep;
+        if (timeToCollision <= 0 || timeToCollision >= 30) {
+            // Not coming towards us or too far away
+            continue;
+        }
+
+        var collisionPoint = vectorPlus(projectile.pos, vectorMultiply(projectile.velocity, timeToCollision));
+        var distanceToCollision = vectorDistance(collisionPoint, hero.pos);
+        var dodgeRadius = Math.max(DodgeRadius, projectile.radius) + hero.radius;
+        if (distanceToCollision > dodgeRadius) {
+            // Won't hit us
+            continue;
+        }
+
+        var deflectAction = deflect(state, hero, cooldowns, projectile);
+        if (deflectAction) {
+            return deflectAction;
+        }
+
+        // Run away from collision point
+        var direction = vectorUnit(vectorNegate(vectorDiff(collisionPoint, hero.pos)));
+        var step = vectorMultiply(direction, dodgeRadius);
+        var target = vectorPlus(hero.pos, step);
+        return { spellId: \"move\", target };
+    }
+    return null;
+}
+
+function vectorDiff(to, from) {
+    return { x: to.x - from.x, y: to.y - from.y };
+}
+
+function vectorLength(vector) {
+    return Math.sqrt(vector.x * vector.x + vector.y * vector.y);
+}
+
+function vectorDistance(from, to) {
+    return vectorLength(vectorDiff(from, to));
+}
+
+function vectorUnit(vec) {
+    var length = vectorLength(vec);
+    return length === 0 ? vec : vectorMultiply(vec, 1 / length);
+}
+
+function vectorPlus(from, offset) {
+    return { x: from.x + offset.x, y: from.y + offset.y };
+}
+
+function vectorMultiply(vec, multiplier) {
+    return { x: vec.x * multiplier, y: vec.y * multiplier };
+}
+
+function vectorRelengthen(vec, length) {
+    return vectorMultiply(vectorUnit(vec), length);
+}
+
+function vectorNegate(vec) {
+    return vectorMultiply(vec, -1);
+}
+
+function vectorDot(a, b) {
+    return (a.x * b.x) + (a.y * b.y);
+}
+
+function vectorMidpoint(a, b) {
+    var diff = vectorDiff(b, a);
+    return vectorPlus(a, vectorMultiply(diff, 0.5));
+}
+
+function vectorFromAngle(angle) {
+\treturn { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+function vectorAngle(vec) {
+    return Math.atan2(vec.y, vec.x);
+}
+
+function vectorAngleDelta(currentAngle, targetAngle) {
+\tvar delta = targetAngle - currentAngle;
+\twhile (delta > Math.PI) {
+\t\tdelta -= 2 * Math.PI;
+\t}
+\twhile (delta < -Math.PI) {
+\t\tdelta += 2 * Math.PI;
+\t}
+\treturn delta;
+}
+
+// See ai.contracts.ts: Must return a BotContract
+return { act };"
+}
