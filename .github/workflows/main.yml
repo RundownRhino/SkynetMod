@@ -37,3 +37,4 @@ jobs:
          $changesMade && echo "Commiting changes"
          $changesMade && git commit --amend --no-edit
          $changesMade && git push --force
+         true
