@@ -53,6 +53,10 @@ function aim(target, spell, caster) {
   if(!enableTargetLeading){
     return target.pos;
   }
+  const AIM_EXCLUDED_SPELLS = ['dualSaber','halo','mines'];
+  if(AIM_EXCLUDED_SPELLS.indexOf(spell.id)>=0){//if in list
+    return target.pos;
+  }
   /*old tracking code
   const HEROSPEED = 0.12 //not sure I can get it directly
   
