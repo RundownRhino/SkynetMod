@@ -34,7 +34,9 @@ jobs:
     - name: Ensure changes are detected
       run: git update-index --refresh
     - name: If there are changes, amend them to last commit
-      run: git diff-index --quiet HEAD -- || (git commit --amend --no-edit && changesMade=true)
+      run: |
+         changesMade=false
+         git diff-index --quiet HEAD -- || (git commit --amend --no-edit && changesMade=true)
     - name: Push
       run: git push
       if: changesMade
