@@ -31,5 +31,5 @@ jobs:
         git config --local user.name "Github Actions"
         git config --local user.email "actions@github.com"
         git update-index --refresh
-        git diff-index --quiet HEAD -- || (git commit --amend --no-edit && git push)
+        git diff-index --quiet HEAD -- || (git commit --amend --no-edit && git push --force)
 
