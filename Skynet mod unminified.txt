@@ -148,7 +148,8 @@ var movementLocationChangeTicks = 30; //from move: how often to update the locat
 const PREDICT_TESTING = false; //if true, BOTS WILL NOT FIGHT and only show their targeting
 var minDodgeDistance = 0.03; //The bot will dodge projectiles it expects to pass within this distance of its current position. acolyte radius is 0.0125
 var minDodgeTime = 0.5; //The bot won't dodge projectiles which have more than that long to fly until closest approach.
-var maxDeflectTime = 0.25//The bot will deflect projectiles which are that long away from hitting them.
+var maxDeflectTime = 0.15;//The bot will deflect projectiles which are that long away from hitting them.
+var DEBUG_NO_MOVE = false;//disables `move`
 //memory vars
 var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
 var lastMoveTick = -1000;
@@ -289,7 +290,7 @@ function myVectorToString(vector){
 }
 function doesLineIntersectObstacles(pos1, pos2, obstacles, lookup){
   //lookup is ObstacleTemplateLookup
-  for (obstacle in obstacles) {
+  for (var obstacle in obstacles) {
     var C = obstacle.pos;
     var closest = findClosestDistanceToPoint(pos, pos2, C);
     var obstacleTemplate = lookup[obstacle.type];
@@ -328,7 +329,7 @@ function updateTracking(worldstate){
   const DEBUG_TRACKING = false;
   !DEBUG_TRACKING || console.log(\"Updating tracking!\");
   //called from act() every tick, updates tracking
-  for (herokey in worldstate.heroes){//iterates over keys
+  for (var herokey in worldstate.heroes){//iterates over keys
     var hero = worldstate.heroes[herokey];
     !DEBUG_TRACKING || console.log(\"Tracking hero of id:\"+hero.id);
     if(trackedPositions[hero.id]===undefined){
@@ -352,7 +353,7 @@ function updateTracking(worldstate){
 function evadeOverload(worldstate, hero, cooldowns, settings){
   const DEBUG_EVADE_OVERLOAD = false;
   let overloadRange = settings.Spells['scourge'].detonate.radius;
-  !DEBUG_EVADE_OVERLOAD || console.log(\"overload range:\"+overloadRange);
+  //!DEBUG_EVADE_OVERLOAD || console.log(\"overload range:\"+overloadRange);
   // Check if there are players looking to overload you
   for (key in worldstate.heroes){
     let enemy = worldstate.heroes[key];
@@ -361,9 +362,18 @@ function evadeOverload(worldstate, hero, cooldowns, settings){
     }
     if(enemy.casting && enemy.casting.spellId == \"scourge\"){
       //uh-oh, need to evade right now
+      for(spellId in cooldowns){
+        var meteorSpells = [\"meteorite\",\"meteor\"];
+        if(meteorSpells.indexOf(spellId)>=0 && cooldowns[spellId] === 0){
+          //someone is about to have a bad time...
+          !DEBUG_EVADE_OVERLOAD || console.log(\"Knockbacking overloader!\");
+          return {spellId: spellId, target:enemy.pos};
+        }
+      }
       var evadeDirection = vectorUnit(vectorDiff(hero.pos, enemy.pos));
       var step = vectorMultiply(evadeDirection, 2*overloadRange);//the range shouldn't matter much, to be honest
       var target = vectorPlus(hero.pos, step);
+      !DEBUG_EVADE_OVERLOAD || console.log(\"Evading overload!\");
       return { spellId: \"move\", target }; 
     }
   }
@@ -519,6 +529,10 @@ function recovery(state, hero, cooldowns) {
 }
 
 function deflect(state, hero, cooldowns, projectile) {
+    var deflectExcludedProjectiles = [\"boomerang\"];//don't try to deflect annoying spells
+    if(deflectExcludedProjectiles.indexOf(projectile.spellId)>=0){
+     return null;
+    }
     var target = vectorMidpoint(hero.pos, projectile.pos);
     var spellId = null;
     if (cooldowns[\"shield\"] === 0) {
@@ -561,11 +575,11 @@ function castSpell(state, hero, opponent, cooldowns, settings) {
         var readyToCast = !cooldowns[spellId];
         var spell = settings.Spells[spellId];
 
-        if (spell
-            && readyToCast
-            && validAttack(state, hero, opponent, spell)) {
-
-            candidates.push(spellId);
+        if (spell && readyToCast && validAttack(state, hero, opponent, spell)) {
+            if([\"meteorite\",\"meteor\"].indexOf(spellId) >= 0/* && Math.random() < 0.95*/){
+              continue;//try to not waste those on normal attacks
+            }
+          candidates.push(spellId);
         }
     }
 
@@ -669,6 +683,9 @@ function chase(state, hero, cooldowns, opponent) {
 }
 
 function move(state, hero) {
+    if(DEBUG_NO_MOVE){
+      return null;
+    }
     let curTick = state.tick;
     let target;
     if(curTick < lastMoveTick + movementLocationChangeTicks){
@@ -731,9 +748,12 @@ function closestApproach(curPos,vel,origin){
   if(radialVel>=0){//going away
     return {time:0,dist:vectorLength(toProjectile),pos:curPos};
   }
-  let AC = vectorMultiply(toProjectile,-1);
-  let distance = Math.abs((vel.x*AC.y) - (vel.y*AC.x))/vectorLength(vel);
   let normal = vectorUnit({x:vel.y,y:-vel.x});//normal vector to projectile's path
+  if(vectorDot(normal,toProjectile)<0){//we'll take the normal pointing mostly from origin to projectile
+    normal = vectorMultiply(normal,-1);
+  }
+  let distance = vectorDot(toProjectile,normal);//the component of radius-vector that's normal to velocity IS the closest approach
+  
   let approachPos = vectorPlus(origin,vectorMultiply(normal,distance));
   let timeToApproach = vectorLength(vectorDiff(approachPos,curPos))/vectorLength(vel);//these vectors should be parallel, so just divide lengths
   return {time:timeToApproach,dist:distance,pos:approachPos};
@@ -753,6 +773,7 @@ function dodge(state, hero, cooldowns) {
             // Halo is never coming for us, it orbits around its owner
             continue;
         }
+        let effectiveDodgeDistance = Math.max(minDodgeDistance, projectile.radius + hero.radius + minDodgeDistance/2);
         var diff = vectorDiff(hero.pos, projectile.pos);
         var distancePerTimeStep = vectorDot(projectile.velocity, vectorUnit(diff));//this is -radial velocity
         if (distancePerTimeStep <= 0) {
@@ -761,15 +782,15 @@ function dodge(state, hero, cooldowns) {
         }
         var approachCalc = closestApproach(projectile.pos,projectile.velocity,hero.pos);
         //!DEBUG_DODGE || console.log(approachCalc);
-        if (approachCalc.dist >= minDodgeDistance|| approachCalc.time >= minDodgeTime) {
+        if (approachCalc.dist >= effectiveDodgeDistance|| approachCalc.time >= minDodgeTime) {
             // Will pass too far away or can wait.
-            !DEBUG_DODGE || console.log(\"Ignoring potential threat:\"+projectile.spellId);
+            //!DEBUG_DODGE || console.log(\"Ignoring potential threat:\"+projectile.spellId);
             continue;
         }
-        if(approachCalc.dist <= (hero.radius + projectile.radius) && approachCalc.time < maxDeflectTime){
+        if(approachCalc.dist <= (hero.radius + projectile.radius)*1.1 && approachCalc.time < maxDeflectTime){
           //going to hit us - try to deflect. TODO: be smarter, sometimes it's better to take the hit
-          !DEBUG_DODGE || console.log(\"Trying to deflect:\"+projectile.spellId);
           var deflectAction = deflect(state, hero, cooldowns, projectile);
+          !(deflectAction||state.tick%5==0)|| !DEBUG_DODGE || console.log(\"Trying to deflect:\"+projectile.spellId);
           if (deflectAction) {
               resultAction = deflectAction;
               timeToAction = 0;
@@ -779,6 +800,7 @@ function dodge(state, hero, cooldowns) {
 
         // Run away from collision point
         if(approachCalc.time < timeToAction){
+          !(state.tick%5==0)||!DEBUG_DODGE || console.log(\"Trying to dodge:\"+projectile.spellId);
           var direction = vectorUnit(vectorDiff(hero.pos, approachCalc.pos));
           var step = vectorMultiply(direction, minDodgeDistance);
           var target = vectorPlus(hero.pos, step);
