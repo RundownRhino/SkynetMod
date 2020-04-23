@@ -146,6 +146,9 @@ var positionTrackingTicks = 20; //how many to track, including the current one. 
 var intersectionOptimizationSteps = 5; //from aim: how many times to refine the guess for the intersection point.
 var movementLocationChangeTicks = 30; //from move: how often to update the location to move to
 const PREDICT_TESTING = false; //if true, BOTS WILL NOT FIGHT and only show their targeting
+var minDodgeDistance = 0.03; //The bot will dodge projectiles it expects to pass within this distance of its current position. acolyte radius is 0.0125
+var minDodgeTime = 0.5; //The bot won't dodge projectiles which have more than that long to fly until closest approach.
+var maxDeflectTime = 0.25//The bot will deflect projectiles which are that long away from hitting them.
 //memory vars
 var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
 var lastMoveTick = -1000;
@@ -434,7 +437,7 @@ function chooseSpells(settings) {
     spells[\"r\"] = \"repeater\";*/
     spells[\"q\"] = \"fireball\";
     spells[\"w\"] = \"boost\";
-    spells[\"e\"] = \"phaseOut\";
+    spells[\"e\"] = \"meteorite\";
     spells[\"r\"] = \"repeater\";
 
     spells[\"p\"] = \"point\";//used to point at targets
@@ -721,8 +724,24 @@ function face(state, hero, opponent) {
 
     return { spellId: \"retarget\", target };
 }
-
+function closestApproach(curPos,vel,origin){
+  //calculates time and distance of closest approach of projectile to origin (only in future)
+  let toProjectile = vectorDiff(curPos, origin);
+  let radialVel = vectorDot(vel,vectorUnit(toProjectile));
+  if(radialVel>=0){//going away
+    return {time:0,dist:vectorLength(toProjectile),pos:curPos};
+  }
+  let AC = vectorMultiply(toProjectile,-1);
+  let distance = Math.abs((vel.x*AC.y) - (vel.y*AC.x))/vectorLength(vel);
+  let normal = vectorUnit({x:vel.y,y:-vel.x});//normal vector to projectile's path
+  let approachPos = vectorPlus(origin,vectorMultiply(normal,distance));
+  let timeToApproach = vectorLength(vectorDiff(approachPos,curPos))/vectorLength(vel);//these vectors should be parallel, so just divide lengths
+  return {time:timeToApproach,dist:distance,pos:approachPos};
+}
 function dodge(state, hero, cooldowns) {
+    var DEBUG_DODGE = false;
+    var resultAction = null;
+    var timeToAction = 100000; //the lower, the more urgent dodging this projectile is.
     for (var projectileId in state.projectiles) {
         var projectile = state.projectiles[projectileId];
         if (projectile.ownerId === hero.id) {
@@ -734,40 +753,40 @@ function dodge(state, hero, cooldowns) {
             // Halo is never coming for us, it orbits around its owner
             continue;
         }
-
         var diff = vectorDiff(hero.pos, projectile.pos);
-        var distancePerTimeStep = vectorDot(projectile.velocity, vectorUnit(diff));
+        var distancePerTimeStep = vectorDot(projectile.velocity, vectorUnit(diff));//this is -radial velocity
         if (distancePerTimeStep <= 0) {
             // Not coming towards us
             continue;
         }
-
-        var timeToCollision = vectorLength(diff) / distancePerTimeStep;
-        if (timeToCollision <= 0 || timeToCollision >= 30) {
-            // Not coming towards us or too far away
+        var approachCalc = closestApproach(projectile.pos,projectile.velocity,hero.pos);
+        //!DEBUG_DODGE || console.log(approachCalc);
+        if (approachCalc.dist >= minDodgeDistance|| approachCalc.time >= minDodgeTime) {
+            // Will pass too far away or can wait.
+            !DEBUG_DODGE || console.log(\"Ignoring potential threat:\"+projectile.spellId);
             continue;
         }
-
-        var collisionPoint = vectorPlus(projectile.pos, vectorMultiply(projectile.velocity, timeToCollision));
-        var distanceToCollision = vectorDistance(collisionPoint, hero.pos);
-        var dodgeRadius = Math.max(DodgeRadius, projectile.radius) + hero.radius;
-        if (distanceToCollision > dodgeRadius) {
-            // Won't hit us
-            continue;
+        if(approachCalc.dist <= (hero.radius + projectile.radius) && approachCalc.time < maxDeflectTime){
+          //going to hit us - try to deflect. TODO: be smarter, sometimes it's better to take the hit
+          !DEBUG_DODGE || console.log(\"Trying to deflect:\"+projectile.spellId);
+          var deflectAction = deflect(state, hero, cooldowns, projectile);
+          if (deflectAction) {
+              resultAction = deflectAction;
+              timeToAction = 0;
+          }
         }
-
-        var deflectAction = deflect(state, hero, cooldowns, projectile);
-        if (deflectAction) {
-            return deflectAction;
-        }
+        
 
         // Run away from collision point
-        var direction = vectorUnit(vectorNegate(vectorDiff(collisionPoint, hero.pos)));
-        var step = vectorMultiply(direction, dodgeRadius);
-        var target = vectorPlus(hero.pos, step);
-        return { spellId: \"move\", target };
+        if(approachCalc.time < timeToAction){
+          var direction = vectorUnit(vectorDiff(hero.pos, approachCalc.pos));
+          var step = vectorMultiply(direction, minDodgeDistance);
+          var target = vectorPlus(hero.pos, step);
+          resultAction = { spellId: \"move\", target };
+          timeToAction = approachCalc.time;
+        }
     }
-    return null;
+    return resultAction;
 }
 
 function vectorDiff(to, from) {
