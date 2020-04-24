@@ -147,7 +147,7 @@ var intersectionOptimizationSteps = 5; //from aim: how many times to refine the 
 var movementLocationChangeTicks = 30; //from move: how often to update the location to move to
 const PREDICT_TESTING = false; //if true, BOTS WILL NOT FIGHT and only show their targeting
 var minDodgeDistance = 0.03; //The bot will dodge projectiles it expects to pass within this distance of its current position. acolyte radius is 0.0125
-var minDodgeTime = 0.5; //The bot won't dodge projectiles which have more than that long to fly until closest approach.
+var minDodgeTime = 0.75; //The bot won't dodge projectiles which have more than that long to fly until closest approach.
 var maxDeflectTime = 0.15;//The bot will deflect projectiles which are that long away from hitting them.
 var DEBUG_NO_MOVE = false;//disables `move`
 //memory vars
@@ -404,7 +404,7 @@ function act(input) {
         action =
             evadeOverload(state, hero, cooldowns, settings)
             ||recovery(state, hero, cooldowns)
-            || dodge(state, hero, cooldowns)
+            || dodge(state, hero, cooldowns, settings)
             || castSpell(state, hero, opponent, cooldowns, settings)
             || focus(hero, opponent)
             || chase(state, hero, cooldowns, opponent)
@@ -413,7 +413,7 @@ function act(input) {
     } else {
         action =
             chooseSpells(settings)
-            || dodge(state, hero, cooldowns)
+            || dodge(state, hero, cooldowns, settings)
             || move(state, hero)
             || face(state, hero, opponent)
     }
@@ -760,7 +760,7 @@ function closestApproach(curPos,vel,origin){
   let timeToApproach = vectorLength(vectorDiff(approachPos,curPos))/vectorLength(vel);//these vectors should be parallel, so just divide lengths
   return {time:timeToApproach,dist:distance,pos:approachPos};
 }
-function dodge(state, hero, cooldowns) {
+function dodge(state, hero, cooldowns, settings) {
     var DEBUG_DODGE = false;
     var resultAction = null;
     var timeToAction = 100000; //the lower, the more urgent dodging this projectile is.
@@ -775,7 +775,13 @@ function dodge(state, hero, cooldowns) {
             // Halo is never coming for us, it orbits around its owner
             continue;
         }
-        let effectiveDodgeDistance = Math.max(minDodgeDistance, projectile.radius + hero.radius + minDodgeDistance/2);
+        
+        let effectiveRadius = settings.Spells[projectile.spellId].projectile.detonate?(Math.max(projectile.radius,settings.Spells[projectile.spellId].projectile.detonate.radius)):(projectile.radius);
+        let effectiveDodgeDistance = Math.max(minDodgeDistance, effectiveRadius + hero.radius + minDodgeDistance/2);
+        if(settings.Spells[projectile.spellId].projectile.detonate){
+          effectiveDodgeDistance += minDodgeDistance/2;//AoE spells need more care
+        }
+        !DEBUG_DODGE || !settings.Spells[projectile.spellId].projectile.detonate ||console.log(\"Projectile has AOE; using bigger effectiveDodgeDistance:\"+effectiveDodgeDistance);
         var diff = vectorDiff(hero.pos, projectile.pos);
         var distancePerTimeStep = vectorDot(projectile.velocity, vectorUnit(diff));//this is -radial velocity
         if (distancePerTimeStep <= 0) {
@@ -789,7 +795,7 @@ function dodge(state, hero, cooldowns) {
             //!DEBUG_DODGE || console.log(\"Ignoring potential threat:\"+projectile.spellId);
             continue;
         }
-        if(approachCalc.dist <= (hero.radius + projectile.radius)*1.1 && approachCalc.time < maxDeflectTime){
+        if(approachCalc.dist <= (hero.radius + effectiveRadius)*1.1 && approachCalc.time < maxDeflectTime){
           //going to hit us - try to deflect. TODO: be smarter, sometimes it's better to take the hit
           var deflectAction = deflect(state, hero, cooldowns, projectile);
           !(deflectAction||state.tick%5==0)|| !DEBUG_DODGE || console.log(\"Trying to deflect:\"+projectile.spellId);
