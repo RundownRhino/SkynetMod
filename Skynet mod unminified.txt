@@ -122,7 +122,6 @@ var DodgeRadius = 0.15;
 var SpellCastIntervalMilliseconds = 500;
 var SpellCastJitterMilliseconds = 300;
 
-
 var TicksPerSecond = 60;
 
 var HardReactionMilliseconds = 1;
@@ -142,7 +141,7 @@ var nextSpell = 0;
 var enableTargetLeading = true;
 var RepeaterCastIntervalMilliseconds = 50;
 var enableObstacleRaytracing = false;//not implemented
-var positionTrackingTicks = 20; //how many to track, including the current one. At least 2.
+var positionTrackingTicks = 120; //how many to track, including the current one. At least 2.
 var intersectionOptimizationSteps = 5; //from aim: how many times to refine the guess for the intersection point.
 var movementLocationChangeTicks = 30; //from move: how often to update the location to move to
 const PREDICT_TESTING = false; //if true, BOTS WILL NOT FIGHT and only show their targeting
@@ -350,7 +349,16 @@ function updateTracking(worldstate){
     while(trackedPositions[hero.id].length > positionTrackingTicks){
       trackedPositions[hero.id].shift(); //remove first element(oldest pos)
     }
+    !(worldstate.tick%60==0 && !hero.isBot)|| console.log(FFT(getXValues(trackedPositions[hero.id])));
   }
+}
+function getXValues(arr){
+  //returns an array of arr[i].x
+  let res = [];
+  for(b in arr){
+    res.push(arr[b].x);
+  }
+  return res;
 }
 function evadeOverload(worldstate, hero, cooldowns, settings){
   const DEBUG_EVADE_OVERLOAD = false;
@@ -880,8 +888,7 @@ function vectorAngleDelta(currentAngle, targetAngle) {
 \treturn delta;
 }
 
-// See ai.contracts.ts: Must return a BotContract
-return { act };
+
 
 class baseComplexArray {
   constructor(other, arrayType = Float32Array) {
@@ -989,7 +996,7 @@ class ComplexArray extends baseComplexArray {
 }
 
 function ensureComplexArray(input) {
-  return input instanceof ComplexArray && input || new ComplexArray(input);
+  return input instanceof baseComplexArray && input || new ComplexArray(input);
 }
 
 function fft(input, inverse) {
@@ -1139,5 +1146,8 @@ function LowestOddFactor(n) {
     factor += 2;
   }
   return n;
-}"
+}
+
+// See ai.contracts.ts: Must return a BotContract
+return { act };"
 }
