@@ -192,6 +192,7 @@ function aim(target, spell, caster) {
   //console.log(\"estimatedVelocity:\"+myVectorToString(estimatedVelocity));
   var range = vectorDistance(caster.pos, curPos);
   var time1 = range/spell.projectile.speed; // first naive guess, in seconds
+  if(spell.chargeTicks>0){time1+=spell.chargeTicks/TicksPerSecond;}//for spells like repulsor
   var deltaX = vectorMultiply(estimatedVelocity,time1*TicksPerSecond);//converting from per tick to per second
   var aimPos = vectorPlus(curPos, deltaX);
   for(let i=1;i<intersectionOptimizationSteps;i++){
@@ -199,6 +200,7 @@ function aim(target, spell, caster) {
     //console.log(\"i=\"+i+\";time1=\"+time1);
     var range = vectorDistance(caster.pos, aimPos);//to the aiming position this time
     var time1 = range/spell.projectile.speed; // refined guess of the time
+    if(spell.chargeTicks>0){time1+=spell.chargeTicks/TicksPerSecond;}//for spells like repulsor
     var deltaX = vectorMultiply(estimatedVelocity,time1*TicksPerSecond);//converting from per tick to per second
     var aimPos = vectorPlus(curPos, deltaX);
   }
