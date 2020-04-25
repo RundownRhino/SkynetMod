@@ -154,7 +154,7 @@ var DEBUG_NO_MOVE = false;//disables `move`
 var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
 var lastMoveTick = -1000;
 var lastMovePosition = undefined;
-
+var trackedSpellUsage = {};//dict(by hero id) of dicts(by spellId)
 function aim(target, spell, caster) {
   const DEBUG_AIM = false;
   // Gets target, spell, and caster, outputs the position for caster to aim at to hit the target with the spell.
@@ -334,7 +334,7 @@ function updateTracking(worldstate){
   for (var herokey in worldstate.heroes){//iterates over keys
     var hero = worldstate.heroes[herokey];
     !DEBUG_TRACKING || console.log(\"Tracking hero of id:\"+hero.id);
-    if(trackedPositions[hero.id]===undefined){
+    if(!trackedPositions[hero.id]){
       //haven't been tracked before
       trackedPositions[hero.id]=[];
     }
@@ -349,6 +349,16 @@ function updateTracking(worldstate){
     trackedPositions[hero.id].push(hero.pos); //add new position to the end
     while(trackedPositions[hero.id].length > positionTrackingTicks){
       trackedPositions[hero.id].shift(); //remove first element(oldest pos)
+    }
+    //spell usage tracking
+    if(worldstate.started&&hero.casting){
+        if(!trackedSpellUsage[hero.id]){
+          trackedSpellUsage[hero.id]={};
+        }
+        if(!trackedSpellUsage[hero.id][hero.casting.spellId]){
+          trackedSpellUsage[hero.id][hero.casting.spellId]=true;
+          //console.log(\"Hero \"+hero.id+\" used spell \"+hero.casting.spellId);
+        }
     }
   }
 }
