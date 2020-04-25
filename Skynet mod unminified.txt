@@ -142,7 +142,7 @@ var nextSpell = 0;
 var enableTargetLeading = true;
 var RepeaterCastIntervalMilliseconds = 50;
 var enableObstacleRaytracing = false;//not implemented
-var positionTrackingTicks = 20; //how many to track, including the current one. At least 2.
+var positionTrackingTicks = 5; //how many to track, including the current one. At least 2.
 var intersectionOptimizationSteps = 5; //from aim: how many times to refine the guess for the intersection point.
 var movementLocationChangeTicks = 30; //from move: how often to update the location to move to
 const PREDICT_TESTING = false; //if true, BOTS WILL NOT FIGHT and only show their targeting
@@ -150,11 +150,13 @@ var minDodgeDistance = 0.03; //The bot will dodge projectiles it expects to pass
 var minDodgeTime = 0.75; //The bot won't dodge projectiles which have more than that long to fly until closest approach.
 var maxDeflectTime = 0.15;//The bot will deflect projectiles which are that long away from hitting them.
 var DEBUG_NO_MOVE = false;//disables `move`
+
 //memory vars
 var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
 var lastMoveTick = -1000;
 var lastMovePosition = undefined;
 var trackedSpellUsage = {};//dict(by hero id) of dicts(by spellId)
+
 function aim(target, spell, caster) {
   const DEBUG_AIM = false;
   // Gets target, spell, and caster, outputs the position for caster to aim at to hit the target with the spell.
@@ -165,47 +167,81 @@ function aim(target, spell, caster) {
   if(AIM_EXCLUDED_SPELLS.indexOf(spell.id)>=0){//if in list
     return target.pos;
   }
-  /*old tracking code
-  const HEROSPEED = 0.12 //not sure I can get it directly
-  
-  var curPos = target.pos; //vector
-  var targetForcedVelocity = target.velocity; //vector - this is only enforced velocity from knockback
-  var targetMoveVelocity = vectorMultiply(vectorFromAngle(target.heading),HEROSPEED);
-  var targetVelocity = vectorPlus(targetForcedVelocity,targetMoveVelocity);
-  var range = vectorDistance(caster.pos, curPos);
-  var time1 = range/spell.projectile.speed; // naive guess at a time-to-hit, in seconds
-  var deltaX = vectorMultiply(targetVelocity,time1); //leading distance
-  */
-  
-  //new code: prediction based on old positions
-  //the current position should already be in trackedPositions
   var curPos = target.pos;
   var tracker = trackedPositions[target.id];
-  !DEBUG_AIM || console.log(tracker);
+  //!DEBUG_AIM || console.log(tracker);
   if(tracker === undefined||tracker.length <= 1){
     return curPos;//TODO: better handling cases when the target has no tracked poses for some reason.
   }
-  /*//most naive way: velocity = (<newest pos>-<oldest pos>)/(positionTrackingTicks-1)
-  var estimatedVelocity = vectorMultiply(vectorDiff(tracker[tracker.length-1],tracker[0]),1/(positionTrackingTicks-1));//this is speed per tick*/
-  //less naive way: linear approximation
-  var estimatedVelocity = linearApproximation(tracker);
-  //console.log(\"estimatedVelocity:\"+myVectorToString(estimatedVelocity));
+  var futurePos = polynomialPrediction(tracker, 1);//function
+  //console.log(\"futurePos:\"+myVectorToString(futurePos));
   var range = vectorDistance(caster.pos, curPos);
   var time1 = range/spell.projectile.speed; // first naive guess, in seconds
   if(spell.chargeTicks>0){time1+=spell.chargeTicks/TicksPerSecond;}//for spells like repulsor
-  var deltaX = vectorMultiply(estimatedVelocity,time1*TicksPerSecond);//converting from per tick to per second
-  var aimPos = vectorPlus(curPos, deltaX);
+  var aimPos = futurePos(time1*TicksPerSecond);
   for(let i=1;i<intersectionOptimizationSteps;i++){
-    //intersection refinement
-    //console.log(\"i=\"+i+\";time1=\"+time1);
     var range = vectorDistance(caster.pos, aimPos);//to the aiming position this time
     var time1 = range/spell.projectile.speed; // refined guess of the time
     if(spell.chargeTicks>0){time1+=spell.chargeTicks/TicksPerSecond;}//for spells like repulsor
-    var deltaX = vectorMultiply(estimatedVelocity,time1*TicksPerSecond);//converting from per tick to per second
-    var aimPos = vectorPlus(curPos, deltaX);
+    var aimPos = futurePos(time1*TicksPerSecond);
   }
-  !DEBUG_AIM || console.log(\"spellSpeed:\"+spell.projectile.speed+\";estimatedVelocity:\"+myVectorToString(estimatedVelocity));
+  !DEBUG_AIM || console.log(\"aimPos:\"+myVectorToString(aimPos));
   return aimPos;
+}
+function polynomialPrediction(posArray, degree){
+  //gets an array of positions, assumed to be all with a separation of 1 tick with the last one being the current one, outputs a function(!) of form (time since last pos in array)->position.
+  if(degree<=1){
+    var predVel = linearApproximation(posArray);
+    function predict(deltaT){
+      return vectorPlus(posArray[posArray.length-1],vectorMultiply(predVel,deltaT/TicksPerSecond));
+    }
+    return predict;
+  }
+  let valNum = posArray.length;
+  let X = [];
+  let Y = [];
+  for(let i=0;i<valNum;i++){
+    X.push([posArray[i].x]);
+    Y.push([posArray[i].y]);
+  }
+  let T = myRange(1-valNum,1);
+  let xFun = ODPR(T, X, degree);
+  let yFun = ODPR(T, Y, degree);
+  function predict(deltaT){
+    return {x:xFun(deltaT),y:yFun(deltaT)};
+  }
+  return predict;
+}
+function ODPR(X, Y, degree){
+  let n = X.length;
+  //generate the matrix
+  var Xmatrix = [];//will be a n*(degree+1) matrix
+  for(let i=0;i<n;i++){
+    Xmatrix.push([1]);
+  }
+  for(let j=1;j<=degree;j++){
+    for(let i=0;i<n;i++){
+      if(j==1){Xmatrix[i][j]=X[i];}
+      else{
+        Xmatrix[i][j]=Xmatrix[i][j-1]*X[i];
+      }
+    }
+  }//matrix done
+  //Now \"just\" a \"simple\" expression:
+  let X_T = myMatrixTranspose(Xmatrix);
+  var Theta = myMatrixMultiply(myMatrixMultiply(matrix_invert(myMatrixMultiply(X_T,Xmatrix)),X_T),Y);
+  //console.log(Theta);
+  function apply(x){
+    let y = Theta[0][0];
+    let temp=1;
+    for(let d=1;d<=degree;d++){
+      temp*=x;
+      y+= Theta[d][0]*temp;
+    }
+    //console.log(\"t:\"+x+\";coord:\"+y);
+    return y;
+  }
+  return apply;
 }
 function linearApproximation(posArray){
   //gets an array of vectors, assumed to be all with a separation of 1 tick, outputs incline of least-squares approximation
@@ -473,12 +509,14 @@ function chooseSpells(settings) {
     var spells = randomSpells(settings);
   
     // Want to test a particular spell? Uncomment and edit the lines below
-    /*spells[\"q\"] = \"fireball\";
-    spells[\"w\"] = \"lightning\";
-    spells[\"e\"] = \"forcefield\";
-    spells[\"r\"] = \"repeater\";*/
     spells[\"q\"] = \"fireball\";
-    spells[\"w\"] = \"boost\";
+    spells[\"w\"] = \"lightning\";
+    /*spells[\"e\"] = \"forcefield\";
+    spells[\"r\"] = \"repeater\";*/
+    /*spells[\"q\"] = \"backlash\";
+    spells[\"w\"] = \"lightning\";*/
+    /*spells[\"q\"] = \"whip\";
+    spells[\"w\"] = \"gravity\";*/
     spells[\"e\"] = \"meteorite\";
     spells[\"r\"] = \"repeater\";
 
@@ -660,7 +698,7 @@ function validAttack(state, hero, opponent, spell) {
 
 function readyForNextSpell(hero) {
     return (
-        Date.now() >= nextSpell // Don't cast too fast
+        Math.random()<0.1 // Don't cast too fast
         || !!hero.link // If linked to something, cast as many spells as possible
     );
 }
@@ -801,7 +839,7 @@ function dodge(state, hero, cooldowns, settings) {
             continue;
         }
 
-        if (projectile.spellId === \"halo\") {
+        if (projectile.spellId === \"halo\"||projectile.spellId === \"whip\") {
             // Halo is never coming for us, it orbits around its owner
             continue;
         }
@@ -908,6 +946,151 @@ function vectorAngleDelta(currentAngle, targetAngle) {
 \t\tdelta += 2 * Math.PI;
 \t}
 \treturn delta;
+}
+function zeroMatrix(n,m){
+  var res = new Array(n);
+  for (var i=0; i<n; ++i) {
+    res[i] = new Array(m);
+    for (var j=0; j<m; ++j) {
+      res[i][j] = 0;
+    }
+  }
+  return res;
+}
+function myMatrixMultiply(A,B){
+  const DEBUG_MM = false;
+  //matrix multiplication
+  //console.log(A);
+  //console.log(B);
+  let n = A.length;
+  let m = A[0].length;
+  if(A[0].length!=B.length){
+    console.error(\"Trying to multiply matrixes of non-matching sizes!\");
+    console.error(A);
+    console.error(B);
+    return;
+  }
+  let k = B[0].length;
+  var res = zeroMatrix(n,k);
+  for (var i=0; i<n; i++) {
+    for (var j=0; j<k; j++) {
+      for (var l=0; l<m; l++){
+        res[i][j]+=A[i][l]*B[l][j];
+      }
+    }
+  }
+  !DEBUG_MM || console.log(\"MatrixMultiply\");
+  !DEBUG_MM || console.log(A);
+  !DEBUG_MM || console.log(B);
+  !DEBUG_MM || console.log(res);
+  return res;
+}
+function myMatrixTranspose(A){
+  let n = A.length;
+  let m = A[0].length;
+  var res = new Array(m);
+  for (var i=0; i<m; i++) {
+    let row = new Array(n);
+    for (var j=0; j<n; j++) {
+      row[j]=A[j][i];
+    }
+    res[i]=row;
+  }
+  return res;
+}
+//http://blog.acipo.com/matrix-inversion-in-javascript/
+// Returns the inverse of matrix `M`.
+function matrix_invert(M){
+    // I use Guassian Elimination to calculate the inverse:
+    // (1) 'augment' the matrix (left) by the identity (on the right)
+    // (2) Turn the matrix on the left into the identity by elemetry row ops
+    // (3) The matrix on the right is the inverse (was the identity matrix)
+    // There are 3 elemtary row ops: (I combine b and c in my code)
+    // (a) Swap 2 rows
+    // (b) Multiply a row by a scalar
+    // (c) Add 2 rows
+    
+    //if the matrix isn't square: exit (error)
+    if(M.length !== M[0].length){return;}
+    
+    //create the identity matrix (I), and a copy (C) of the original
+    var i=0, ii=0, j=0, dim=M.length, e=0, t=0;
+    var I = [], C = [];
+    for(i=0; i<dim; i+=1){
+        // Create the row
+        I[I.length]=[];
+        C[C.length]=[];
+        for(j=0; j<dim; j+=1){
+            
+            //if we're on the diagonal, put a 1 (for identity)
+            if(i==j){ I[i][j] = 1; }
+            else{ I[i][j] = 0; }
+            
+            // Also, make the copy of the original
+            C[i][j] = M[i][j];
+        }
+    }
+    
+    // Perform elementary row operations
+    for(i=0; i<dim; i+=1){
+        // get the element e on the diagonal
+        e = C[i][i];
+        
+        // if we have a 0 on the diagonal (we'll need to swap with a lower row)
+        if(e==0){
+            //look through every row below the i'th row
+            for(ii=i+1; ii<dim; ii+=1){
+                //if the ii'th row has a non-0 in the i'th col
+                if(C[ii][i] != 0){
+                    //it would make the diagonal have a non-0 so swap it
+                    for(j=0; j<dim; j++){
+                        e = C[i][j];       //temp store i'th row
+                        C[i][j] = C[ii][j];//replace i'th row by ii'th
+                        C[ii][j] = e;      //repace ii'th by temp
+                        e = I[i][j];       //temp store i'th row
+                        I[i][j] = I[ii][j];//replace i'th row by ii'th
+                        I[ii][j] = e;      //repace ii'th by temp
+                    }
+                    //don't bother checking other rows since we've swapped
+                    break;
+                }
+            }
+            //get the new diagonal
+            e = C[i][i];
+            //if it's still 0, not invertable (error)
+            if(e==0){return}
+        }
+        
+        // Scale this row down by e (so we have a 1 on the diagonal)
+        for(j=0; j<dim; j++){
+            C[i][j] = C[i][j]/e; //apply to original matrix
+            I[i][j] = I[i][j]/e; //apply to identity
+        }
+        
+        // Subtract this row (scaled appropriately for each row) from ALL of
+        // the other rows so that there will be 0's in this column in the
+        // rows above and below this one
+        for(ii=0; ii<dim; ii++){
+            // Only apply to other rows (we want a 1 on the diagonal)
+            if(ii==i){continue;}
+            
+            // We want to change this element to 0
+            e = C[ii][i];
+            
+            // Subtract (the row above(or below) scaled by e) from (the
+            // current row) but start at the i'th column and assume all the
+            // stuff left of diagonal is 0 (which it should be if we made this
+            // algorithm correctly)
+            for(j=0; j<dim; j++){
+                C[ii][j] -= e*C[i][j]; //apply to original matrix
+                I[ii][j] -= e*I[i][j]; //apply to identity
+            }
+        }
+    }
+    
+    //we've done all operations, C should be the identity
+    //matrix I should be the inverse:
+    return I;
 }
 
 // See ai.contracts.ts: Must return a BotContract
