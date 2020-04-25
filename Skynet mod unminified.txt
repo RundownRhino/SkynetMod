@@ -23,8 +23,8 @@
 			},
 			{
 				"btn": "p",
-				"barSize": 0.1,
-				"wheelSize": 0.1
+				"barSize": 0.001,
+				"wheelSize": 0.001
 			},
 			{
 				"btn": "q",
@@ -362,36 +362,56 @@ function updateTracking(worldstate){
     }
   }
 }
-function evadeOverload(worldstate, hero, cooldowns, settings){
+function evadeCQC(worldstate, hero, cooldowns, settings){
   const DEBUG_EVADE_OVERLOAD = false;
   let overloadRange = settings.Spells['scourge'].detonate.radius;
+  let whipRange = settings.Spells['whip'].projectile.speed * settings.Spells['whip'].projectile.maxTicks / TicksPerSecond;
   //!DEBUG_EVADE_OVERLOAD || console.log(\"overload range:\"+overloadRange);
   // Check if there are players looking to overload you
   for (key in worldstate.heroes){
     let enemy = worldstate.heroes[key];
-    if(enemy.id == hero.id||vectorDistance(enemy.pos,hero.pos)<(overloadRange+hero.radius)){
-      continue;//ourselves or too far
+    if(enemy.isBot||enemy.isAlly){
+      continue;//bots are friends
     }
-    if(enemy.casting && enemy.casting.spellId == \"scourge\"){
-      //uh-oh, need to evade right now
-      for(spellId in cooldowns){
-        var meteorSpells = [\"meteorite\",\"meteor\"];
-        if(meteorSpells.indexOf(spellId)>=0 && cooldowns[spellId] === 0){
-          //someone is about to have a bad time...
-          !DEBUG_EVADE_OVERLOAD || console.log(\"Knockbacking overloader!\");
-          return {spellId: spellId, target:enemy.pos};
+    //overload
+    //console.log(\"Current distance:\"+vectorDistance(enemy.pos,hero.pos)+\", threshold:\"+ (overloadRange+hero.radius)*1.2)
+    if(vectorDistance(enemy.pos,hero.pos)<(overloadRange+hero.radius)*1.2){
+      //within range
+      if(enemy.casting && enemy.casting.spellId == \"scourge\"){
+        //uh-oh, need to evade right now
+        //!DEBUG_EVADE_OVERLOAD || console.log(\"Overload detected!\");
+        let knockbackAction = tryKnockback(hero,enemy,cooldowns);
+        if(knockbackAction){
+          return knockbackAction;
         }
+        var evadeDirection = vectorUnit(vectorDiff(hero.pos, enemy.pos));
+        var step = vectorMultiply(evadeDirection, 2*overloadRange);//the range shouldn't matter much, to be honest
+        var target = vectorPlus(hero.pos, step);
+        !DEBUG_EVADE_OVERLOAD || console.log(\"Evading overload!\");
+        return { spellId: \"move\", target }; 
       }
-      var evadeDirection = vectorUnit(vectorDiff(hero.pos, enemy.pos));
-      var step = vectorMultiply(evadeDirection, 2*overloadRange);//the range shouldn't matter much, to be honest
-      var target = vectorPlus(hero.pos, step);
-      !DEBUG_EVADE_OVERLOAD || console.log(\"Evading overload!\");
-      return { spellId: \"move\", target }; 
+    }
+    //Eshock
+    if(trackedSpellUsage[enemy.id]&&trackedSpellUsage[enemy.id][\"whip\"]&&vectorDistance(enemy.pos,hero.pos)<(whipRange+hero.radius)){
+      //EShock user uncomfortably close. Same treatment as overload users.
+      !DEBUG_EVADE_OVERLOAD || console.log(\"Trying to evade whip!\");
+      return tryKnockback(hero,enemy,cooldowns);//no evasion by movement; that'd probably cause the bot to run off the arena
     }
   }
   return null;
 }
-
+function tryKnockback(hero,enemy,cooldowns){
+  let DEBUG_TRY_KNOCKBACK = false;
+  var meteorSpells = [\"meteorite\",\"meteor\"];
+  for(spellId in cooldowns){
+    if(meteorSpells.indexOf(spellId)>=0 && cooldowns[spellId] === 0){
+      //someone is about to have a bad time...
+      !DEBUG_TRY_KNOCKBACK || console.log(\"Knockbacking overloader!\");
+      return {spellId: spellId, target:enemy.pos};
+    }
+  }
+  return null;
+}
 function act(input) {
     // Want the bot to do nothing? Uncomment the line below (remove the //):
     // return null;
@@ -412,8 +432,8 @@ function act(input) {
     var action = null;
     if (state.started) {
         action =
-            evadeOverload(state, hero, cooldowns, settings)
-            ||recovery(state, hero, cooldowns)
+            recovery(state, hero, cooldowns)
+            ||evadeCQC(state, hero, cooldowns, settings)
             || dodge(state, hero, cooldowns, settings)
             || castSpell(state, hero, opponent, cooldowns, settings)
             || focus(hero, opponent)
