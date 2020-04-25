@@ -193,7 +193,7 @@ function polynomialPrediction(posArray, degree){
   if(degree<=1){
     var predVel = linearApproximation(posArray);
     function predict(deltaT){
-      return vectorPlus(posArray[posArray.length-1],vectorMultiply(predVel,deltaT/TicksPerSecond));
+      return vectorPlus(posArray[posArray.length-1],vectorMultiply(predVel,deltaT));
     }
     return predict;
   }
