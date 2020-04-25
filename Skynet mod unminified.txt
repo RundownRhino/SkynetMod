@@ -176,11 +176,11 @@ function aim(target, spell, caster) {
   var futurePos = polynomialPrediction(tracker, 1);//function
   //console.log(\"futurePos:\"+myVectorToString(futurePos));
   var range = vectorDistance(caster.pos, curPos);
-  var time1 = range/spell.projectile.speed; // first naive guess, in seconds
+  var time1 = range/spell.projectile.speed; // refined guess of the time
   if(spell.chargeTicks>0){time1+=spell.chargeTicks/TicksPerSecond;}//for spells like repulsor
   var aimPos = futurePos(time1*TicksPerSecond);//converting from per tick to per second
   for(let i=1;i<intersectionOptimizationSteps;i++){
-    var range = vectorDistance(caster.pos, aimPos);
+    var range = vectorDistance(caster.pos, aimPos);//to the aiming position this time
     var time1 = range/spell.projectile.speed; // first naive guess, in seconds
     if(spell.chargeTicks>0){time1+=spell.chargeTicks/TicksPerSecond;}//for spells like repulsor
     var aimPos = futurePos(time1*TicksPerSecond);//converting from per tick to per second
