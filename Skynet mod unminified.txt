@@ -608,25 +608,13 @@ function deflect(state, hero, cooldowns, projectile) {
      return null;
     }
     var target = vectorMidpoint(hero.pos, projectile.pos);
+    var validDeflectSpellIds = [\"shield\",\"icewall\",\"saber\",\"dualSaber\",\"meteor\",\"meteorite\",\"whirlwind\",\"phaseOut\"];
     var spellId = null;
-    if (cooldowns[\"shield\"] === 0) {
-        spellId = \"shield\";
-    } else if (cooldowns[\"icewall\"] === 0) {
-        spellId = \"icewall\";
-    } else if (cooldowns[\"saber\"] === 0) {
-        spellId = \"saber\";
-    } else if (cooldowns[\"dualSaber\"] === 0) {
-        spellId = \"dualSaber\";
-    } else if (cooldowns[\"meteor\"] === 0) {
-        spellId = \"meteor\";
-    } else if (cooldowns[\"meteorite\"] === 0) {
-        spellId = \"meteorite\";
-    } else if (cooldowns[\"whirlwind\"] === 0) {
-        spellId = \"whirlwind\";
-    } else if (cooldowns[\"phaseOut\"] === 0) {
-        spellId = \"phaseOut\";
-    } else {
-        spellId = null;
+    for (var curSpell in validDeflectSpellIds){
+      if(cooldowns[validDeflectSpellIds[curSpell]] === 0){
+        spellId = validDeflectSpellIds[curSpell];
+        break;
+      }
     }
 
     if (spellId) {
