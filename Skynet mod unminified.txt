@@ -150,6 +150,8 @@ var minDodgeDistance = 0.03; //The bot will dodge projectiles it expects to pass
 var minDodgeTime = 0.75; //The bot won't dodge projectiles which have more than that long to fly until closest approach.
 var maxDeflectTime = 0.15;//The bot will deflect projectiles which are that long away from hitting them.
 var DEBUG_NO_MOVE = false;//disables `move`
+var HORCRUX_LEAD_TIME = 0.5;//how much ahead to aim with horcrux, in seconds
+var MAX_AIM_LEAD_TIME = 1;//in seconds, a shoot will be considered too hard if it requires leading for more than this
 
 //memory vars
 var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
@@ -177,11 +179,13 @@ function aim(target, spell, caster) {
   //console.log(\"futurePos:\"+myVectorToString(futurePos));
   var range = vectorDistance(caster.pos, curPos);
   var time1 = range/spell.projectile.speed; // first naive guess, in seconds
+  if(spell.id=='horcrux'){time1+=HORCRUX_LEAD_TIME;}//aim a bit ahead
   if(spell.chargeTicks>0){time1+=spell.chargeTicks/TicksPerSecond;}//for spells like repulsor
   var aimPos = futurePos(time1*TicksPerSecond);
   for(let i=1;i<intersectionOptimizationSteps;i++){
     var range = vectorDistance(caster.pos, aimPos);//to the aiming position this time
     var time1 = range/spell.projectile.speed; // refined guess of the time
+    if(spell.id=='horcrux'){time1+=HORCRUX_LEAD_TIME;}//aim a bit ahead
     if(spell.chargeTicks>0){time1+=spell.chargeTicks/TicksPerSecond;}//for spells like repulsor
     var aimPos = futurePos(time1*TicksPerSecond);
   }
@@ -507,20 +511,14 @@ function chooseSpells(settings) {
     alreadyChosenSpells = true;
 
     var spells = randomSpells(settings);
-  
-    // Want to test a particular spell? Uncomment and edit the lines below
-    spells[\"q\"] = \"fireball\";
-    spells[\"w\"] = \"lightning\";
-    /*spells[\"e\"] = \"forcefield\";
-    spells[\"r\"] = \"repeater\";*/
-    /*spells[\"q\"] = \"backlash\";
-    spells[\"w\"] = \"lightning\";*/
-    /*spells[\"q\"] = \"whip\";
-    spells[\"w\"] = \"gravity\";*/
-    spells[\"e\"] = \"meteorite\";
-    spells[\"r\"] = \"repeater\";
-
-    spells[\"p\"] = \"point\";//used to point at targets
+    
+    var buildPresets = [];//array of dicts, each dict being a valid spellset (not necessarily full)
+    buildPresets.push({\"a\":\"teleport\",\"q\":\"fireball\",\"w\":\"boomerang\",\"e\":\"meteorite\",\"r\":\"supernova\",\"f\":\"scourge\"});//knockback build
+    buildPresets.push({\"a\":\"teleport\",\"q\":\"difire\",\"w\":\"gravity\",\"e\":\"horcrux\",\"r\":\"repeater\",\"f\":\"firesplatter\"});//damage build
+    
+    Object.assign(spells,buildPresets[Math.floor(Math.random()*buildPresets.length)]);//select random preset, overwrite the random values with it. Spells not mentioned in preset are left random.
+    
+    spells[\"p\"] = \"point\";//used to point at targets //not actually used much at the moment
     return { spells };
 }
 
@@ -528,18 +526,18 @@ function randomSpells(settings) {
 \tvar keyBindings = {};
 \tvar allOptions = settings.Choices.Options;
 \tfor (var btn in allOptions) { // One of the buttons, e.g. Q or R
-        var options = allOptions[btn];
-
-        var spellIds = [];
-        for (var i = 0; i < options.length; ++i) {
-            var row = options[i];
-            for (var j = 0; j < row.length; ++j) {
-                var spellId = row[j];
-                spellIds.push(spellId);
-            }
+    var options = allOptions[btn];
+    
+    var spellIds = [];
+    for (var i = 0; i < options.length; ++i) {
+        var row = options[i];
+        for (var j = 0; j < row.length; ++j) {
+            var spellId = row[j];
+            spellIds.push(spellId);
         }
+    }
 
-\t\tif (spellIds.length > 1) {
+\t\tif (spellIds.length >= 1) {
 \t\t\tkeyBindings[btn] = spellIds[Math.floor(Math.random() * spellIds.length)];
 \t\t}
 \t}
@@ -577,19 +575,16 @@ function recovery(state, hero, cooldowns) {
         return null;
     }
 
+    var validRecoverySpellIds = [\"teleport\", \"thrust\", \"swap\", \"voidRush\", \"vanish\"];
     var spellId = null;
-    if (cooldowns[\"teleport\"] === 0) {
-        spellId = \"teleport\";
-    } else if (cooldowns[\"thrust\"] === 0) {
-        spellId = \"thrust\";
-    } else if (cooldowns[\"swap\"] === 0) {
-        spellId = \"swap\";
-    } else if (cooldowns[\"voidRush\"] === 0) {
-        spellId = \"voidRush\";
-    } else if (cooldowns[\"vanish\"] === 0) {
-        spellId = \"vanish\";
-    } else {
-        spellId = \"move\";
+    for (var curSpell in validRecoverySpellIds){
+      if(cooldowns[validRecoverySpellIds[curSpell]] === 0){
+        spellId = validRecoverySpellIds[curSpell];
+        break;
+      }
+    }
+    if(!spellId){
+      spellId = \"move\";
     }
 
     if (spellId) {
@@ -604,25 +599,13 @@ function deflect(state, hero, cooldowns, projectile) {
      return null;
     }
     var target = vectorMidpoint(hero.pos, projectile.pos);
+    var validDeflectSpellIds = [\"shield\",\"icewall\",\"saber\",\"dualSaber\",\"meteor\",\"meteorite\",\"whirlwind\",\"phaseOut\"];
     var spellId = null;
-    if (cooldowns[\"shield\"] === 0) {
-        spellId = \"shield\";
-    } else if (cooldowns[\"icewall\"] === 0) {
-        spellId = \"icewall\";
-    } else if (cooldowns[\"saber\"] === 0) {
-        spellId = \"saber\";
-    } else if (cooldowns[\"dualSaber\"] === 0) {
-        spellId = \"dualSaber\";
-    } else if (cooldowns[\"meteor\"] === 0) {
-        spellId = \"meteor\";
-    } else if (cooldowns[\"meteorite\"] === 0) {
-        spellId = \"meteorite\";
-    } else if (cooldowns[\"whirlwind\"] === 0) {
-        spellId = \"whirlwind\";
-    } else if (cooldowns[\"phaseOut\"] === 0) {
-        spellId = \"phaseOut\";
-    } else {
-        spellId = null;
+    for (var curSpell in validDeflectSpellIds){
+      if(cooldowns[validDeflectSpellIds[curSpell]] === 0){
+        spellId = validDeflectSpellIds[curSpell];
+        break;
+      }
     }
 
     if (spellId) {
@@ -656,6 +639,13 @@ function castSpell(state, hero, opponent, cooldowns, settings) {
     if (candidates.length > 0) {
         var spellId = candidates[Math.floor(Math.random() * candidates.length)];
         var action = { spellId, target: aim(opponent, settings.Spells[spellId], hero) };
+        //console.log(\"Estimated hit time:\"+(vectorDistance(hero.pos, action.target)/settings.Spells[spellId].projectile.speed));
+        if ((vectorDistance(hero.pos, action.target)/settings.Spells[spellId].projectile.speed)>MAX_AIM_LEAD_TIME){
+            return null; //TODO: since spell to try is chosen randomly, might want to try another instead of just trying the next tick
+        }
+        if (vectorDistance(hero.pos, action.target)>(settings.Spells[spellId].projectile.speed*settings.Spells[spellId].projectile.maxTicks)){
+            return null; //Don't shoot where the spell won't reach!
+        }
         if (action.spellId === spellId) {
             updateNextSpellTime(spellId);
         }
