@@ -643,6 +643,9 @@ function castSpell(state, hero, opponent, cooldowns, settings) {
         if ((vectorDistance(hero.pos, action.target)/settings.Spells[spellId].projectile.speed)>MAX_AIM_LEAD_TIME){
             return null; //TODO: since spell to try is chosen randomly, might want to try another instead of just trying the next tick
         }
+        if (vectorDistance(hero.pos, action.target)>(settings.Spells[spellId].projectile.speed*settings.Spells[spellId].projectile.maxTicks)){
+            return null; //Don't shoot where the spell won't reach!
+        }
         if (action.spellId === spellId) {
             updateNextSpellTime(spellId);
         }
