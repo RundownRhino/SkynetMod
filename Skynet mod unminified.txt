@@ -511,20 +511,14 @@ function chooseSpells(settings) {
     alreadyChosenSpells = true;
 
     var spells = randomSpells(settings);
-  
-    // Want to test a particular spell? Uncomment and edit the lines below
-    spells[\"q\"] = \"difire\";
-    spells[\"w\"] = \"gravity\";
-    /*spells[\"e\"] = \"forcefield\";
-    spells[\"r\"] = \"repeater\";*/
-    /*spells[\"q\"] = \"backlash\";
-    spells[\"w\"] = \"lightning\";*/
-    /*spells[\"q\"] = \"whip\";
-    spells[\"w\"] = \"gravity\";*/
-    spells[\"e\"] = \"horcrux\";
-    spells[\"r\"] = \"repeater\";
-
-    spells[\"p\"] = \"point\";//used to point at targets
+    
+    var buildPresets = [];//array of dicts, each dict being a valid spellset (not necessarily full)
+    buildPresets.push({\"a\":\"teleport\",\"q\":\"fireball\",\"w\":\"boomerang\",\"e\":\"meteorite\",\"r\":\"supernova\",\"f\":\"scourge\"});//knockback build
+    buildPresets.push({\"a\":\"teleport\",\"q\":\"difire\",\"w\":\"gravity\",\"e\":\"horcrux\",\"r\":\"repeater\",\"f\":\"firesplatter\"});//damage build
+    
+    Object.assign(spells,buildPresets[Math.floor(Math.random()*buildPresets.length)]);//select random preset, overwrite the random values with it. Spells not mentioned in preset are left random.
+    
+    spells[\"p\"] = \"point\";//used to point at targets //not actually used much at the moment
     return { spells };
 }
 
