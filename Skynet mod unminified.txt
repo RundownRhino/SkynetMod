@@ -151,6 +151,7 @@ var minDodgeTime = 0.75; //The bot won't dodge projectiles which have more than 
 var maxDeflectTime = 0.15;//The bot will deflect projectiles which are that long away from hitting them.
 var DEBUG_NO_MOVE = false;//disables `move`
 var HORCRUX_LEAD_TIME = 0.5;//how much ahead to aim with horcrux, in seconds
+var MAX_AIM_LEAD_TIME = 1;//in seconds, a shoot will be considered too hard if it requires leading for more than this
 
 //memory vars
 var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
@@ -659,6 +660,10 @@ function castSpell(state, hero, opponent, cooldowns, settings) {
     if (candidates.length > 0) {
         var spellId = candidates[Math.floor(Math.random() * candidates.length)];
         var action = { spellId, target: aim(opponent, settings.Spells[spellId], hero) };
+        //console.log(\"Estimated hit time:\"+(vectorDistance(hero.pos, action.target)/settings.Spells[spellId].projectile.speed));
+        if ((vectorDistance(hero.pos, action.target)/settings.Spells[spellId].projectile.speed)>MAX_AIM_LEAD_TIME){
+            return null; //TODO: since spell to try is chosen randomly, might want to try another instead of just trying the next tick
+        }
         if (action.spellId === spellId) {
             updateNextSpellTime(spellId);
         }
