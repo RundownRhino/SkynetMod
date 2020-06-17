@@ -532,18 +532,18 @@ function randomSpells(settings) {
 \tvar keyBindings = {};
 \tvar allOptions = settings.Choices.Options;
 \tfor (var btn in allOptions) { // One of the buttons, e.g. Q or R
-        var options = allOptions[btn];
-
-        var spellIds = [];
-        for (var i = 0; i < options.length; ++i) {
-            var row = options[i];
-            for (var j = 0; j < row.length; ++j) {
-                var spellId = row[j];
-                spellIds.push(spellId);
-            }
+    var options = allOptions[btn];
+    
+    var spellIds = [];
+    for (var i = 0; i < options.length; ++i) {
+        var row = options[i];
+        for (var j = 0; j < row.length; ++j) {
+            var spellId = row[j];
+            spellIds.push(spellId);
         }
+    }
 
-\t\tif (spellIds.length > 1) {
+\t\tif (spellIds.length >= 1) {
 \t\t\tkeyBindings[btn] = spellIds[Math.floor(Math.random() * spellIds.length)];
 \t\t}
 \t}
@@ -581,19 +581,16 @@ function recovery(state, hero, cooldowns) {
         return null;
     }
 
+    var validRecoverySpellIds = [\"teleport\", \"thrust\", \"swap\", \"voidRush\", \"vanish\"];
     var spellId = null;
-    if (cooldowns[\"teleport\"] === 0) {
-        spellId = \"teleport\";
-    } else if (cooldowns[\"thrust\"] === 0) {
-        spellId = \"thrust\";
-    } else if (cooldowns[\"swap\"] === 0) {
-        spellId = \"swap\";
-    } else if (cooldowns[\"voidRush\"] === 0) {
-        spellId = \"voidRush\";
-    } else if (cooldowns[\"vanish\"] === 0) {
-        spellId = \"vanish\";
-    } else {
-        spellId = \"move\";
+    for (var curSpell in validRecoverySpellIds){
+      if(cooldowns[validRecoverySpellIds[curSpell]] === 0){
+        spellId = validRecoverySpellIds[curSpell];
+        break;
+      }
+    }
+    if(!spellId){
+      spellId = \"move\";
     }
 
     if (spellId) {
