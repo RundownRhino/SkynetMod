@@ -150,6 +150,7 @@ var minDodgeDistance = 0.03; //The bot will dodge projectiles it expects to pass
 var minDodgeTime = 0.75; //The bot won't dodge projectiles which have more than that long to fly until closest approach.
 var maxDeflectTime = 0.15;//The bot will deflect projectiles which are that long away from hitting them.
 var DEBUG_NO_MOVE = false;//disables `move`
+var HORCRUX_LEAD_TIME = 0.5;//how much ahead to aim with horcrux, in seconds
 
 //memory vars
 var trackedPositions = {}; //dictionary of arrays(of length up to positionTrackingTicks) of positions
@@ -177,11 +178,13 @@ function aim(target, spell, caster) {
   //console.log(\"futurePos:\"+myVectorToString(futurePos));
   var range = vectorDistance(caster.pos, curPos);
   var time1 = range/spell.projectile.speed; // first naive guess, in seconds
+  if(spell.id=='horcrux'){time1+=HORCRUX_LEAD_TIME;}//aim a bit ahead
   if(spell.chargeTicks>0){time1+=spell.chargeTicks/TicksPerSecond;}//for spells like repulsor
   var aimPos = futurePos(time1*TicksPerSecond);
   for(let i=1;i<intersectionOptimizationSteps;i++){
     var range = vectorDistance(caster.pos, aimPos);//to the aiming position this time
     var time1 = range/spell.projectile.speed; // refined guess of the time
+    if(spell.id=='horcrux'){time1+=HORCRUX_LEAD_TIME;}//aim a bit ahead
     if(spell.chargeTicks>0){time1+=spell.chargeTicks/TicksPerSecond;}//for spells like repulsor
     var aimPos = futurePos(time1*TicksPerSecond);
   }
@@ -509,15 +512,15 @@ function chooseSpells(settings) {
     var spells = randomSpells(settings);
   
     // Want to test a particular spell? Uncomment and edit the lines below
-    spells[\"q\"] = \"fireball\";
-    spells[\"w\"] = \"lightning\";
+    spells[\"q\"] = \"difire\";
+    spells[\"w\"] = \"gravity\";
     /*spells[\"e\"] = \"forcefield\";
     spells[\"r\"] = \"repeater\";*/
     /*spells[\"q\"] = \"backlash\";
     spells[\"w\"] = \"lightning\";*/
     /*spells[\"q\"] = \"whip\";
     spells[\"w\"] = \"gravity\";*/
-    spells[\"e\"] = \"meteorite\";
+    spells[\"e\"] = \"horcrux\";
     spells[\"r\"] = \"repeater\";
 
     spells[\"p\"] = \"point\";//used to point at targets
