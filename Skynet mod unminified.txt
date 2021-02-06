@@ -667,7 +667,8 @@ function validAttack(state, hero, opponent, spell) {
         if (spell.id === \"swap\") { // Swap doesn't work as an attack
             return false;
         }
-        if (opponentShielded && !spell.projectile.detonate && !spell.id == \"phaseOrb\") { // Detonate spells and phaseorb can penetrate shields, nothing else can
+        // Shields can be penetrated by explosive spells, ensnare, phaseorb
+        if (opponentShielded && !spell.projectile.detonate && !spell.projectile.gravity && spell.id != \"phaseOrb\") { 
             return false;
         }
         if (spell.id === \"whip\") {
