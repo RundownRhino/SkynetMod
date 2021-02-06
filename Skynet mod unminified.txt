@@ -595,7 +595,7 @@ function recovery(state, hero, cooldowns) {
 }
 
 function deflect(state, hero, cooldowns, projectile) {
-    var deflectExcludedProjectiles = [\"boomerang\"];//don't try to deflect annoying spells
+    var deflectExcludedProjectiles = [\"boomerang\", \"phaseOrb\"];//don't try to deflect annoying spells
     if(deflectExcludedProjectiles.indexOf(projectile.spellId)>=0){
      return null;
     }
