@@ -515,6 +515,7 @@ function chooseSpells(settings) {
     var buildPresets = [];//array of dicts, each dict being a valid spellset (not necessarily full)
     buildPresets.push({\"a\":\"teleport\",\"q\":\"fireball\",\"w\":\"boomerang\",\"e\":\"meteorite\",\"r\":\"supernova\",\"f\":\"scourge\"});//knockback build
     buildPresets.push({\"a\":\"teleport\",\"q\":\"difire\",\"w\":\"gravity\",\"e\":\"horcrux\",\"r\":\"repeater\",\"f\":\"firesplatter\"});//damage build
+    buildPresets.push({\"a\":\"teleport\",\"q\":\"phaseOrb\",\"w\":\"gravity\",\"e\":\"meteorite\",\"r\":\"repeater\",\"f\":\"scourge\"});//phaseorb build
     
     Object.assign(spells,buildPresets[Math.floor(Math.random()*buildPresets.length)]);//select random preset, overwrite the random values with it. Spells not mentioned in preset are left random.
     
@@ -666,7 +667,7 @@ function validAttack(state, hero, opponent, spell) {
         if (spell.id === \"swap\") { // Swap doesn't work as an attack
             return false;
         }
-        if (opponentShielded && !spell.projectile.detonate) { // Detonate spells can penetrate shields, nothing else can
+        if (opponentShielded && !spell.projectile.detonate && !spell.id == \"phaseOrb\") { // Detonate spells and phaseorb can penetrate shields, nothing else can
             return false;
         }
         if (spell.id === \"whip\") {
